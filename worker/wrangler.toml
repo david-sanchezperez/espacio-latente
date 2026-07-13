@@ -1,0 +1,14 @@
+name = "espacio-latente-agente-bio"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# La API key y el secret de Turnstile NO van aquí. Se guardan como secrets:
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET_KEY
+
+# KV namespace para los contadores de rate limiting.
+# 1. Créalo:  npx wrangler kv namespace create RATE_LIMIT
+# 2. Pega aquí el "id" que te devuelve el comando anterior:
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "PEGA_AQUI_TU_ID_DE_KV"

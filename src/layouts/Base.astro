@@ -1,0 +1,23 @@
+---
+import '../styles/global.css';
+const { titulo = 'Espacio Latente', descripcion = 'Ideas en estado latente, decodificadas en experimentos. Agentes, MCP y documentación sobre IA aplicada.' } = Astro.props;
+---
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{titulo}</title>
+    <meta name="description" content={descripcion} />
+  </head>
+  <body>
+    <main class="contenedor">
+      <slot />
+    </main>
+    <footer>
+      <div class="contenedor">
+        ESPACIO LATENTE v0.1 — hecho con Astro + Claude · <a href="/#buzon">buzón de peticiones</a>
+      </div>
+    </footer>
+  </body>
+</html>

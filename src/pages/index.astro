@@ -1,0 +1,81 @@
+---
+import Base from '../layouts/Base.astro';
+import AgenteBio from '../components/AgenteBio.jsx';
+import TerminalBio from '../components/TerminalBio.jsx';
+import { getCollection } from 'astro:content';
+
+const experimentos = (await getCollection('experimentos'))
+  .sort((a, b) => a.data.unidad.localeCompare(b.data.unidad));
+
+const lineasBio = [
+  '> whoami',
+  '[TU NOMBRE] — construyendo cosas con IA.',
+  '> cat espacio-latente.md',
+  'Aquí fraguo lo que voy aprendiendo sobre agentes, MCP y prompting.',
+  'Cada módulo del rack es una idea que ha colapsado en algo concreto.',
+  '> _',
+];
+---
+<Base>
+  <!-- HERO -->
+  <section class="hero">
+    <p class="etiqueta">// espacio-latente.com</p>
+    <h1>Ideas en estado latente,<br /><span class="ambar">decodificadas en experimentos.</span></h1>
+    <div style="margin-top: 1.75rem;">
+      <TerminalBio client:load lineas={lineasBio} />
+    </div>
+  </section>
+
+  <!-- MÓDULO U-01: EL AGENTE EN VIVO -->
+  <section class="rack" id="agente">
+    <AgenteBio client:visible />
+  </section>
+
+  <!-- EL RACK DE EXPERIMENTOS -->
+  <section class="rack" id="lab">
+    <div class="rack-titulo">
+      <h2>El rack</h2>
+      <span class="etiqueta">{experimentos.length + 1} ideas decodificadas</span>
+    </div>
+
+    <article class="modulo">
+      <span class="unidad">U-01</span>
+      <div>
+        <h3><a href="#agente">Agente-bio</a></h3>
+        <p class="resumen">Un agente que responde por mí: quién soy, qué hago y por qué.</p>
+      </div>
+      <span class="led online">online</span>
+    </article>
+
+    {experimentos.map((exp) => (
+      <article class="modulo">
+        <span class="unidad">{exp.data.unidad}</span>
+        <div>
+          <h3><a href={`/lab/${exp.id}/`}>{exp.data.titulo}</a></h3>
+          <p class="resumen">{exp.data.resumen}</p>
+        </div>
+        <span class={`led ${exp.data.estado}`}>{exp.data.estado}</span>
+      </article>
+    ))}
+  </section>
+
+  <!-- BUZÓN DE PETICIONES -->
+  <section class="buzon" id="buzon">
+    <div class="rack-titulo">
+      <h2>Buzón de peticiones</h2>
+      <span class="etiqueta">¿qué módulo instalo después?</span>
+    </div>
+    <p style="margin: 1.25rem 0; color: var(--acero);">
+      Propón un experimento, una duda sobre agentes o algo que quieras ver
+      documentado aquí.
+    </p>
+    <!-- Crea un formulario gratis en web3forms.com y pega tu access_key -->
+    <form action="https://api.web3forms.com/submit" method="POST">
+      <input type="hidden" name="access_key" value="TU_ACCESS_KEY_DE_WEB3FORMS" />
+      <input type="text" name="nombre" placeholder="Tu nombre (opcional)" />
+      <input type="email" name="email" placeholder="Tu email (si quieres respuesta)" />
+      <textarea name="mensaje" placeholder="Tu petición o idea…" required></textarea>
+      <button type="submit">Enviar petición</button>
+    </form>
+  </section>
+</Base>

@@ -1,0 +1,18 @@
+# dependencias (se reinstalan con `npm install`)
+node_modules/
+
+# build de Astro
+dist/
+.astro/
+
+# variables de entorno locales — nunca subas claves aquí
+.env
+.env.*
+!.env.example
+
+# Wrangler (Cloudflare Workers)
+worker/.wrangler/
+worker/node_modules/
+
+# sistema
+.DS_Store

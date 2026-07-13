@@ -1,0 +1,197 @@
+/* ============================================
+   EL RACK — sistema de diseño
+   Estética: rack de laboratorio. Grafito, ámbar
+   fósforo, etiquetas técnicas en monoespaciada.
+   ============================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Archivo:wdth,wght@125,700..800&display=swap');
+
+:root {
+  /* Paleta */
+  --grafito: #12151a;        /* fondo: chasis del rack */
+  --panel: #1a1f26;          /* módulos */
+  --borde: #2c333d;          /* aristas del metal */
+  --hueso: #e9e5da;          /* texto principal */
+  --acero: #8a97a5;          /* texto secundario */
+  --ambar: #ffb454;          /* acento: fósforo ámbar */
+  --led-verde: #7adb8f;      /* estado: online */
+  --led-ambar: #ffb454;      /* estado: en pruebas */
+  --led-gris: #5c6b7a;       /* estado: archivado */
+
+  /* Tipografía */
+  --f-display: 'Archivo', sans-serif;
+  --f-body: 'IBM Plex Sans', sans-serif;
+  --f-mono: 'IBM Plex Mono', monospace;
+}
+
+@keyframes parpadeo {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="parpadeo"] { animation: none !important; opacity: 1 !important; }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+body {
+  background: var(--grafito);
+  color: var(--hueso);
+  font-family: var(--f-body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  /* textura sutil de metal perforado */
+  background-image: radial-gradient(circle, #1d222a 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+a { color: var(--ambar); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--ambar);
+  outline-offset: 2px;
+}
+
+.contenedor { max-width: 880px; margin: 0 auto; padding: 0 1.25rem; }
+
+/* --- Etiquetas técnicas (eyebrows) --- */
+.etiqueta {
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--acero);
+}
+
+/* --- Hero --- */
+.hero { padding: 5rem 0 3.5rem; }
+.hero h1 {
+  font-family: var(--f-display);
+  font-weight: 800;
+  font-size: clamp(2.4rem, 7vw, 4.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin: 0.75rem 0 1rem;
+}
+.hero h1 .ambar { color: var(--ambar); }
+.hero p { color: var(--acero); max-width: 56ch; }
+
+/* --- El rack: módulos 1U --- */
+.rack { padding: 2rem 0 5rem; }
+.rack-titulo {
+  display: flex; align-items: baseline; gap: 1rem;
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 0.75rem; margin-bottom: 0;
+}
+.rack-titulo h2 {
+  font-family: var(--f-display);
+  font-weight: 700; font-size: 1.6rem;
+}
+
+.modulo {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-top: none;
+  padding: 1.1rem 1.25rem;
+  transition: background 0.15s ease;
+  position: relative;
+}
+.modulo:first-of-type { border-top: 1px solid var(--borde); }
+.modulo:hover { background: #20262f; }
+
+/* tornillos del panel */
+.modulo::before, .modulo::after {
+  content: '';
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--borde);
+  top: 50%; transform: translateY(-50%);
+}
+.modulo::before { left: 7px; }
+.modulo::after { right: 7px; }
+
+.modulo .unidad {
+  font-family: var(--f-mono);
+  font-size: 0.8rem;
+  color: var(--acero);
+  padding-left: 0.75rem;
+}
+.modulo h3 { font-size: 1.05rem; font-weight: 600; }
+.modulo h3 a { color: var(--hueso); }
+.modulo h3 a:hover { color: var(--ambar); text-decoration: none; }
+.modulo .resumen { font-size: 0.9rem; color: var(--acero); margin-top: 0.15rem; }
+
+.led {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  font-family: var(--f-mono); font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--acero);
+  padding-right: 0.75rem;
+  white-space: nowrap;
+}
+.led::before {
+  content: '';
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--led-gris);
+}
+.led.online::before { background: var(--led-verde); box-shadow: 0 0 8px var(--led-verde); }
+.led.pruebas::before { background: var(--led-ambar); box-shadow: 0 0 8px var(--led-ambar); }
+
+/* --- Artículos del laboratorio --- */
+.articulo { padding: 3.5rem 0 5rem; }
+.articulo h1 {
+  font-family: var(--f-display); font-weight: 800;
+  font-size: clamp(1.9rem, 5vw, 2.8rem);
+  line-height: 1.1; margin: 0.5rem 0 1.5rem;
+}
+.articulo h2 { font-family: var(--f-display); font-size: 1.4rem; margin: 2.2rem 0 0.8rem; }
+.articulo p { margin-bottom: 1.1rem; }
+.articulo pre {
+  background: var(--panel); border: 1px solid var(--borde);
+  padding: 1rem; overflow-x: auto; font-size: 0.85rem;
+  font-family: var(--f-mono); margin-bottom: 1.1rem;
+}
+.articulo code { font-family: var(--f-mono); font-size: 0.9em; color: var(--ambar); }
+.articulo pre code { color: var(--hueso); }
+
+/* --- Buzón --- */
+.buzon { padding: 0 0 5rem; }
+.buzon form { display: grid; gap: 0.9rem; max-width: 540px; }
+.buzon input, .buzon textarea {
+  background: var(--panel); border: 1px solid var(--borde);
+  color: var(--hueso); font-family: var(--f-body);
+  font-size: 0.95rem; padding: 0.75rem 0.9rem;
+}
+.buzon textarea { min-height: 120px; resize: vertical; }
+.buzon button {
+  justify-self: start;
+  background: var(--ambar); color: var(--grafito);
+  border: none; font-family: var(--f-mono); font-weight: 500;
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 0.75rem 1.4rem; cursor: pointer;
+}
+.buzon button:hover { filter: brightness(1.1); }
+
+/* --- Pie --- */
+footer {
+  border-top: 1px solid var(--borde);
+  padding: 2rem 0;
+  font-family: var(--f-mono); font-size: 0.8rem; color: var(--acero);
+}
+
+@media (max-width: 640px) {
+  .modulo { grid-template-columns: 1fr; gap: 0.4rem; padding: 1rem 1.5rem; }
+  .modulo .unidad { padding-left: 0; }
+  .led { padding: 0; }
+}

@@ -1,0 +1,26 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const experimentos = await getCollection('experimentos');
+  return experimentos.map((exp) => ({
+    params: { slug: exp.id },
+    props: { exp },
+  }));
+}
+
+const { exp } = Astro.props;
+const { Content } = await render(exp);
+---
+<Base titulo={`${exp.data.titulo} — El Rack`} descripcion={exp.data.resumen}>
+  <article class="articulo">
+    <p class="etiqueta">
+      {exp.data.unidad} · {exp.data.estado} ·
+      {exp.data.fecha.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' })}
+    </p>
+    <h1>{exp.data.titulo}</h1>
+    <Content />
+    <p style="margin-top: 3rem;"><a href="/#lab">← volver al rack</a></p>
+  </article>
+</Base>
