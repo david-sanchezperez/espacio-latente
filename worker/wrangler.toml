@@ -11,4 +11,4 @@ compatibility_date = "2026-01-01"
 # 2. Pega aquí el "id" que te devuelve el comando anterior:
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
-id = "PEGA_AQUI_TU_ID_DE_KV"
+id = "6e17a9f8233e4c029e8080f178b071a9"
