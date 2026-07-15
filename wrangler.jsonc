@@ -4,5 +4,9 @@
   "assets": {
     "directory": "dist",
     "not_found_handling": "404-page"
-  }
+  },
+  "routes": [
+    { "pattern": "espacio-latente.com", "custom_domain": true },
+    { "pattern": "www.espacio-latente.com", "custom_domain": true }
+  ]
 }
