@@ -1,118 +1,60 @@
 import { useState, useRef, useEffect } from 'react';
 
-// URL de tu Worker desplegado (cámbiala tras `wrangler deploy`)
-const WORKER_URL = 'https://espacio-latente-agente-bio.TU-SUBDOMINIO.workers.dev';
-
-// Site key pública de Turnstile (dashboard.cloudflare.com → Turnstile → Add site)
-// Esta SÍ va en el frontend, es pública por diseño; el secreto va solo en el Worker.
-const TURNSTILE_SITE_KEY = 'TU_SITE_KEY_DE_TURNSTILE';
-
+// Respuestas fijas: sin llamadas a ninguna API, sin coste ni tokens.
+// Si quieres ampliar lo que "sabe" el agente, añade entradas aquí.
 const SUGERENCIAS = [
-  '¿Quién eres?',
-  '¿En qué proyectos trabajas?',
-  '¿Qué es esto del rack?',
+  {
+    pregunta: '¿Quién eres?',
+    respuesta: 'David Sánchez Pérez lleva más de 20 años haciendo que la infraestructura sea invisible para que otros puedan construir encima. Hoy es Head of Core Platform - Engineering en BBVA, donde su equipo sostiene la plataforma sobre la que corre un banco. Empezó reconfigurando routers de Telefónica en 2005.',
+  },
+  {
+    pregunta: '¿Qué te gusta?',
+    respuesta: 'Aprender sin pausa: hizo un Máster en IA Aplicada y Avanzada bastante después de terminar la carrera, porque para él estudiar no es una fase. Y, más que el código, le mueven las personas — conseguir que un equipo reme junto pesa más que cualquier arquitectura elegante.',
+  },
+  {
+    pregunta: '¿En qué proyectos trabajas?',
+    respuesta: 'En BBVA lidera "One Single PaaS", una única experiencia de desarrollo y operación entre on-premise, AWS y otros clouds, y la automatización a gran escala del aprovisionamiento de clusters OpenShift. Aquí, en espacio-latente.com, documenta experimentos con agentes, MCP y loop prompting.',
+  },
+  {
+    pregunta: '¿Qué es esto del rack?',
+    respuesta: 'Cada módulo del rack es una idea que ha pasado de estado latente a algo concreto: un experimento con agentes, MCP o prompting, documentado y con demo cuando es posible. Este mismo agente es el módulo U-01.',
+  },
 ];
 
 export default function AgenteBio() {
   const [mensajes, setMensajes] = useState([
-    { rol: 'agente', texto: 'Módulo U-01 en línea. Soy el agente de esta web: pregúntame quién es su autor, qué hace o qué encontrarás aquí.' },
+    { rol: 'agente', texto: 'Módulo U-01 en línea. Elige una pregunta y te cuento quién es el autor de esta web, qué hace o qué encontrarás aquí.' },
   ]);
-  const [entrada, setEntrada] = useState('');
-  const [cargando, setCargando] = useState(false);
-  const [tsToken, setTsToken] = useState(null);
-  const [tsListo, setTsListo] = useState(false);
+  const [usadas, setUsadas] = useState([]);
   const finRef = useRef(null);
-  const tsContenedorRef = useRef(null);
-  const tsWidgetId = useRef(null);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [mensajes, cargando]);
+  }, [mensajes]);
 
-  // Carga el script de Turnstile y renderiza el widget invisible.
-  // Sin un token válido, no se puede enviar ninguna pregunta.
-  useEffect(() => {
-    function renderizar() {
-      if (!window.turnstile || tsWidgetId.current !== null) return;
-      tsWidgetId.current = window.turnstile.render(tsContenedorRef.current, {
-        sitekey: TURNSTILE_SITE_KEY,
-        size: 'invisible',
-        callback: (token) => setTsToken(token),
-        'expired-callback': () => setTsToken(null),
-        'error-callback': () => setTsToken(null),
-      });
-      setTsListo(true);
-    }
+  function preguntar(item) {
+    setMensajes((prev) => [
+      ...prev,
+      { rol: 'usuario', texto: item.pregunta },
+      { rol: 'agente', texto: item.respuesta },
+    ]);
+    setUsadas((prev) => [...prev, item.pregunta]);
+  }
 
-    if (window.turnstile) {
-      renderizar();
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-      script.async = true;
-      script.onload = renderizar;
-      document.head.appendChild(script);
-    }
-  }, []);
-
-  async function enviar(texto) {
-    const pregunta = (texto ?? entrada).trim();
-    if (!pregunta || cargando) return;
-
-    if (!tsToken) {
-      setMensajes((prev) => [
-        ...prev,
-        { rol: 'agente', texto: 'Verificando que no eres un robot… vuelve a intentarlo en un segundo.' },
-      ]);
-      window.turnstile?.execute(tsWidgetId.current);
-      return;
-    }
-
-    setEntrada('');
-    const historial = [...mensajes, { rol: 'usuario', texto: pregunta }];
-    setMensajes(historial);
-    setCargando(true);
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          turnstileToken: tsToken,
-          // El Worker espera el historial en formato { role, content }
-          messages: historial.map((m) => ({
-            role: m.rol === 'usuario' ? 'user' : 'assistant',
-            content: m.texto,
-          })),
-        }),
-      });
-      // Cada token de Turnstile es de un solo uso: pide uno nuevo para el
-      // siguiente mensaje.
-      setTsToken(null);
-      window.turnstile?.reset(tsWidgetId.current);
-
-      if (res.status === 429) {
-        const data = await res.json();
-        setMensajes((prev) => [...prev, { rol: 'agente', texto: data.error }]);
-        return;
-      }
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      setMensajes((prev) => [...prev, { rol: 'agente', texto: data.respuesta }]);
-    } catch (err) {
-      setMensajes((prev) => [
-        ...prev,
-        { rol: 'agente', texto: 'Fallo en el enlace con el módulo. Comprueba que el Worker está desplegado y la URL es correcta.' },
-      ]);
-    } finally {
-      setCargando(false);
-    }
+  function irAlBuzon() {
+    setMensajes((prev) => [
+      ...prev,
+      { rol: 'usuario', texto: 'Quiero aportar una idea' },
+      { rol: 'agente', texto: 'Buen módulo para instalar. Bajando al buzón de peticiones ↓' },
+    ]);
+    document.getElementById('buzon')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   return (
     <div style={estilos.caja}>
       <div style={estilos.cabecera}>
         <span style={estilos.led} />
-        <span style={estilos.cabeceraTexto}>U-01 · AGENTE-BIO · EN VIVO</span>
+        <span style={estilos.cabeceraTexto}>U-01 · AGENTE-BIO</span>
       </div>
 
       <div style={estilos.mensajes}>
@@ -121,30 +63,22 @@ export default function AgenteBio() {
             {m.texto}
           </div>
         ))}
-        {cargando && <div style={estilos.msgAgente}>▋ procesando…</div>}
         <div ref={finRef} />
       </div>
 
       <div style={estilos.sugerencias}>
         {SUGERENCIAS.map((s) => (
-          <button key={s} style={estilos.chip} onClick={() => enviar(s)} disabled={cargando}>
-            {s}
+          <button
+            key={s.pregunta}
+            style={estilos.chip}
+            onClick={() => preguntar(s)}
+            disabled={usadas.includes(s.pregunta)}
+          >
+            {s.pregunta}
           </button>
         ))}
-      </div>
-
-      <div ref={tsContenedorRef} />
-      <div style={estilos.entradaFila}>
-        <input
-          style={estilos.input}
-          value={entrada}
-          onChange={(e) => setEntrada(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && enviar()}
-          placeholder="Escribe tu pregunta…"
-          aria-label="Pregunta para el agente"
-        />
-        <button style={estilos.boton} onClick={() => enviar()} disabled={cargando}>
-          Enviar
+        <button style={estilos.chipDestacado} onClick={irAlBuzon}>
+          + Aportar una idea
         </button>
       </div>
     </div>
@@ -195,19 +129,9 @@ const estilos = {
     color: '#8a97a5', fontSize: '0.78rem', padding: '0.35rem 0.7rem',
     cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace",
   },
-  entradaFila: {
-    display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem',
-    borderTop: '1px solid #2c333d',
-  },
-  input: {
-    flex: 1, background: '#12151a', border: '1px solid #2c333d',
-    color: '#e9e5da', padding: '0.6rem 0.8rem', fontSize: '0.92rem',
-    fontFamily: 'inherit',
-  },
-  boton: {
-    background: '#ffb454', color: '#12151a', border: 'none',
-    padding: '0.6rem 1.1rem', cursor: 'pointer',
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em',
+  chipDestacado: {
+    background: 'transparent', border: '1px solid #ffb454',
+    color: '#ffb454', fontSize: '0.78rem', padding: '0.35rem 0.7rem',
+    cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace",
   },
 };
