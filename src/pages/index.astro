@@ -69,13 +69,44 @@ const lineasBio = [
       Propón un experimento, una duda sobre agentes o algo que quieras ver
       documentado aquí.
     </p>
-    <!-- Crea un formulario gratis en web3forms.com y pega tu access_key -->
-    <form action="https://api.web3forms.com/submit" method="POST">
+    <form id="form-buzon" action="https://api.web3forms.com/submit" method="POST">
       <input type="hidden" name="access_key" value="cab570f5-1090-4775-8faf-c75881ba1832" />
       <input type="text" name="nombre" placeholder="Tu nombre (opcional)" />
       <input type="email" name="email" placeholder="Tu email (si quieres respuesta)" />
       <textarea name="mensaje" placeholder="Tu petición o idea…" required></textarea>
       <button type="submit">Enviar petición</button>
+      <p id="estado-buzon" class="etiqueta" style="min-height: 1.2em;"></p>
     </form>
   </section>
 </Base>
+
+<script>
+  const form = document.getElementById('form-buzon');
+  const estado = document.getElementById('estado-buzon');
+
+  form?.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const boton = form.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    estado.textContent = 'Enviando…';
+
+    try {
+      const respuesta = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: { Accept: 'application/json' },
+      });
+      const datos = await respuesta.json();
+      if (datos.success) {
+        estado.textContent = 'Recibido. Gracias — si dejaste email, te contesto por ahí.';
+        form.reset();
+      } else {
+        estado.textContent = `No se pudo enviar: ${datos.message || 'inténtalo de nuevo en un momento.'}`;
+      }
+    } catch (err) {
+      estado.textContent = 'Fallo de red. Inténtalo de nuevo en un momento.';
+    } finally {
+      boton.disabled = false;
+    }
+  });
+</script>
