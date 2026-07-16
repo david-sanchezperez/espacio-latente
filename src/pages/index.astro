@@ -4,7 +4,7 @@ import AgenteBio from '../components/AgenteBio.jsx';
 import TerminalBio from '../components/TerminalBio.jsx';
 import { getCollection } from 'astro:content';
 
-const experimentos = (await getCollection('experimentos'))
+const experimentos = (await getCollection('experimentos', ({ data }) => data.estado !== 'archivado'))
   .sort((a, b) => a.data.unidad.localeCompare(b.data.unidad));
 
 const lineasBio = [
