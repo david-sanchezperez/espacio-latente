@@ -2,7 +2,7 @@
 titulo: "RAG, agentes y LLM: cómo interactúa todo con todo"
 resumen: "Las tres piezas del puzle explicadas con código: el modelo, la memoria externa y el bucle que decide."
 estado: archivado
-unidad: "U-04"
+unidad: "U-06"
 fecha: 2026-07-13
 ---
 
