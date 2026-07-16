@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 620" font-family="'IBM Plex Mono', monospace">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a97a5"/>
+    </marker>
+    <marker id="arrowAmbar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ffb454"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="720" height="620" fill="#12151a"/>
+
+  <!-- column labels -->
+  <text x="160" y="28" fill="#ffb454" font-size="14" text-anchor="middle" letter-spacing="1">ENCODER</text>
+  <text x="560" y="28" fill="#ffb454" font-size="14" text-anchor="middle" letter-spacing="1">DECODER</text>
+
+  <!-- encoder stack outer frame (xN) -->
+  <rect x="60" y="180" width="200" height="200" rx="6" fill="none" stroke="#2c333d" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="270" y="285" fill="#8a97a5" font-size="13">× N</text>
+
+  <!-- decoder stack outer frame (xN) -->
+  <rect x="460" y="100" width="200" height="310" rx="6" fill="none" stroke="#2c333d" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="670" y="260" fill="#8a97a5" font-size="13">× N</text>
+
+  <!-- ENCODER: bottom to top = Input Embedding -> Multi-Head Attn -> Add&Norm -> Feed Forward -> Add&Norm -->
+  <rect x="80" y="330" width="160" height="34" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="160" y="352" fill="#e9e5da" font-size="12" text-anchor="middle">Multi-Head Attention</text>
+
+  <rect x="80" y="300" width="160" height="20" rx="3" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="160" y="315" fill="#8a97a5" font-size="10" text-anchor="middle">Add &amp; Norm</text>
+
+  <rect x="80" y="220" width="160" height="34" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="160" y="242" fill="#e9e5da" font-size="12" text-anchor="middle">Feed Forward</text>
+
+  <rect x="80" y="190" width="160" height="20" rx="3" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="160" y="205" fill="#8a97a5" font-size="10" text-anchor="middle">Add &amp; Norm</text>
+
+  <rect x="80" y="460" width="160" height="30" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="160" y="480" fill="#e9e5da" font-size="12" text-anchor="middle">Input Embedding</text>
+  <text x="255" y="480" fill="#ffb454" font-size="10">+ pos.</text>
+  <text x="160" y="520" fill="#8a97a5" font-size="11" text-anchor="middle">"el gato duerme"</text>
+
+  <!-- encoder flow arrows: strictly in the gaps between boxes -->
+  <line x1="160" y1="460" x2="160" y2="366" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="160" y1="328" x2="160" y2="322" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="160" y1="298" x2="160" y2="256" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="160" y1="218" x2="160" y2="212" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- encoder output to decoder cross-attention (K, V) -->
+  <path d="M240 200 C 350 200, 350 267, 472 267" fill="none" stroke="#ffb454" stroke-width="1.5" marker-end="url(#arrowAmbar)"/>
+  <text x="345" y="222" fill="#ffb454" font-size="10" text-anchor="middle">K, V</text>
+
+  <!-- DECODER: bottom to top = Output Embedding -> Masked Attn -> Add&Norm -> Cross-Attention -> Add&Norm -> Feed Forward -> Add&Norm -> Linear+Softmax -->
+  <rect x="480" y="360" width="160" height="34" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="560" y="382" fill="#e9e5da" font-size="12" text-anchor="middle">Masked Attention</text>
+
+  <rect x="480" y="330" width="160" height="20" rx="3" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="560" y="345" fill="#8a97a5" font-size="10" text-anchor="middle">Add &amp; Norm</text>
+
+  <rect x="480" y="250" width="160" height="34" rx="4" fill="#1a1f26" stroke="#ffb454" stroke-width="1.5"/>
+  <text x="560" y="272" fill="#e9e5da" font-size="12" text-anchor="middle">Cross-Attention</text>
+
+  <rect x="480" y="220" width="160" height="20" rx="3" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="560" y="235" fill="#8a97a5" font-size="10" text-anchor="middle">Add &amp; Norm</text>
+
+  <rect x="480" y="140" width="160" height="34" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="560" y="162" fill="#e9e5da" font-size="12" text-anchor="middle">Feed Forward</text>
+
+  <rect x="480" y="110" width="160" height="20" rx="3" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="560" y="125" fill="#8a97a5" font-size="10" text-anchor="middle">Add &amp; Norm</text>
+
+  <rect x="480" y="40" width="160" height="30" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="560" y="60" fill="#7adb8f" font-size="12" text-anchor="middle">Linear + Softmax</text>
+
+  <rect x="480" y="460" width="160" height="30" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+  <text x="560" y="480" fill="#e9e5da" font-size="12" text-anchor="middle">Output Embedding</text>
+  <text x="655" y="480" fill="#ffb454" font-size="10">+ pos.</text>
+  <text x="560" y="520" fill="#8a97a5" font-size="11" text-anchor="middle">"the cat" (shifted →)</text>
+
+  <!-- decoder flow arrows: strictly in the gaps between boxes -->
+  <line x1="560" y1="460" x2="560" y2="396" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="560" y1="358" x2="560" y2="352" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="560" y1="328" x2="560" y2="286" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="560" y1="248" x2="560" y2="242" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="560" y1="218" x2="560" y2="176" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="560" y1="138" x2="560" y2="132" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="560" y1="108" x2="560" y2="72" stroke="#8a97a5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <text x="560" y="590" fill="#8a97a5" font-size="10" text-anchor="middle">probabilidades sobre el vocabulario ("duerme" ↑)</text>
+</svg>

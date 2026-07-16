@@ -164,6 +164,96 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 .articulo code { font-family: var(--f-mono); font-size: 0.9em; color: var(--ambar); }
 .articulo pre code { color: var(--hueso); }
+.articulo table {
+  width: 100%; border-collapse: collapse;
+  margin-bottom: 1.5rem; font-size: 0.9rem;
+}
+.articulo th, .articulo td {
+  border: 1px solid var(--borde);
+  padding: 0.6rem 0.8rem; text-align: left;
+}
+.articulo th {
+  font-family: var(--f-mono); font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--acero); background: var(--panel);
+}
+.articulo img {
+  max-width: 100%; display: block; margin: 0 auto 1.5rem;
+  border: 1px solid var(--borde); border-radius: 4px;
+  background: var(--grafito);
+}
+
+/* --- Demo interactiva de atención --- */
+.attn-demo {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 1.5rem;
+  font-family: var(--f-mono);
+}
+.attn-demo-label { color: var(--acero); font-size: 0.8rem; margin-right: 0.6rem; }
+.attn-demo-pick { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.attn-tok {
+  font-family: var(--f-mono); font-size: 0.85rem; color: var(--hueso);
+  background: var(--grafito); border: 1px solid var(--borde);
+  border-radius: 3px; padding: 0.35rem 0.8rem; cursor: pointer;
+}
+.attn-tok:hover { border-color: var(--acero); }
+.attn-tok.is-active { border-color: var(--ambar); color: var(--ambar); }
+.attn-demo-row { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
+.attn-demo-name { width: 4.5rem; color: var(--hueso); flex-shrink: 0; }
+.attn-demo-bar { flex: 1; height: 0.6rem; background: var(--grafito); border: 1px solid var(--borde); border-radius: 2px; overflow: hidden; }
+.attn-demo-bar-fill { height: 100%; background: var(--ambar); transition: width 0.2s ease; }
+.attn-demo-pct { width: 3rem; text-align: right; color: var(--acero); }
+.attn-demo-out { margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid var(--borde); font-size: 0.9rem; }
+.attn-demo-out code { color: var(--led-verde); }
+
+/* --- Demo animada encoder/decoder --- */
+.flow-demo {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 1.5rem;
+  font-family: var(--f-mono);
+}
+.flow-demo-caption {
+  min-height: 2.6rem; color: var(--ambar); font-size: 0.85rem;
+  margin-bottom: 1rem; line-height: 1.5;
+}
+.flow-demo-grid { display: flex; align-items: center; gap: 0.8rem; }
+.flow-col { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.flow-col-title {
+  color: var(--ambar); font-size: 0.7rem; text-align: center;
+  letter-spacing: 0.08em; margin-bottom: 0.2rem;
+}
+.flow-box {
+  background: var(--grafito); border: 1px solid var(--borde);
+  border-radius: 3px; padding: 0.5rem 0.4rem; text-align: center;
+  font-size: 0.72rem; color: var(--acero); transition: all 0.2s ease;
+}
+.flow-sub { display: block; color: var(--acero); font-size: 0.65rem; margin-top: 0.2rem; }
+.flow-box.is-active {
+  border-color: var(--ambar); color: var(--hueso);
+  box-shadow: 0 0 0 1px var(--ambar) inset;
+}
+.flow-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 3.5rem; }
+.flow-kv {
+  font-size: 0.7rem; color: var(--acero); border: 1px dashed var(--borde);
+  border-radius: 3px; padding: 0.3rem 0.4rem; text-align: center; transition: all 0.2s ease;
+}
+.flow-kv.is-active { color: var(--ambar); border-color: var(--ambar); border-style: solid; }
+.flow-demo-output {
+  margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--borde);
+  font-size: 0.9rem; color: var(--acero);
+}
+.flow-demo-output span { color: var(--led-verde); }
+.flow-demo-controls { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; }
+.flow-demo-controls button {
+  font-family: var(--f-mono); font-size: 0.8rem; color: var(--hueso);
+  background: var(--grafito); border: 1px solid var(--borde);
+  border-radius: 3px; padding: 0.4rem 0.9rem; cursor: pointer;
+}
+.flow-demo-controls button:hover { border-color: var(--acero); }
+@media (max-width: 560px) {
+  .flow-demo-grid { flex-direction: column; }
+  .flow-mid { width: auto; }
+}
 
 /* --- Buzón --- */
 .buzon { padding: 0 0 5rem; }
