@@ -33,7 +33,10 @@ const enlaceBuzon = lang === 'es' ? '/#buzon' : '/en/#buzon';
         <a class="chasis-marca" href={lang === 'es' ? '/' : '/en/'}>
           <span class="chasis-punto"></span> espacio-latente.com
         </a>
-        <a class="chasis-idioma" href={enlaceIdioma} hreflang={otroIdioma}>{strings['idioma.cambiar']}</a>
+        <div class="chasis-derecha">
+          <a class="chasis-radar" href="https://radar.espacio-latente.com/">{strings['nav.radar']}</a>
+          <a class="chasis-idioma" href={enlaceIdioma} hreflang={otroIdioma}>{strings['idioma.cambiar']}</a>
+        </div>
       </div>
     </nav>
     <main class="contenedor">

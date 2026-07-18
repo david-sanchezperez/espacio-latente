@@ -9,6 +9,7 @@ export const ui = {
     'nav.agentes': 'Agentes',
     'nav.maquinas': 'Proyectos',
     'nav.buzon': 'Buzón',
+    'nav.radar': 'Radar',
     'meta.descripcion':
       'Ideas en estado latente, decodificadas en experimentos. Agentes, MCP y documentación sobre IA aplicada.',
     'hero.titulo1': 'Ideas en estado latente,',
@@ -53,6 +54,7 @@ export const ui = {
     'nav.agentes': 'Agents',
     'nav.maquinas': 'Projects',
     'nav.buzon': 'Suggest',
+    'nav.radar': 'Radar',
     'meta.descripcion':
       'Ideas in a latent state, decoded into experiments. Agents, MCP, and notes on applied AI.',
     'hero.titulo1': 'Ideas in a latent state,',

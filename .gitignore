@@ -13,6 +13,8 @@ dist/
 # Wrangler (Cloudflare Workers)
 worker/.wrangler/
 worker/node_modules/
+worker-radar/.wrangler/
+worker-radar/node_modules/
 
 # sistema
 .DS_Store

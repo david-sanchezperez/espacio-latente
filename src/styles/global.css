@@ -81,6 +81,17 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   background: var(--led-verde); box-shadow: 0 0 8px var(--led-verde);
   display: inline-block;
 }
+.chasis-derecha { display: flex; align-items: center; gap: 0.6rem; }
+.chasis-radar {
+  font-family: var(--f-mono); font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--acero);
+}
+.chasis-radar::before {
+  content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--led-ambar); margin-right: 0.4rem; box-shadow: 0 0 6px var(--led-ambar);
+}
+.chasis-radar:hover { color: var(--ambar); text-decoration: none; }
 .chasis-idioma {
   font-family: var(--f-mono); font-size: 0.75rem;
   text-transform: uppercase; letter-spacing: 0.06em;

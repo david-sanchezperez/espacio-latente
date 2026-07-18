@@ -1,0 +1,20 @@
+name = "espacio-latente-radar"
+main = "src/index.js"
+compatibility_date = "2026-07-14"
+
+# Cron dos veces al día. Cloudflare solo admite UTC: 07:00/19:00 UTC
+# equivalen a las 08:00/20:00 CET en invierno y 09:00/21:00 CEST en
+# verano (una hora de deriva estacional, asumida — ver diseño en el chat).
+[triggers]
+crons = ["0 7 * * *", "0 19 * * *"]
+
+[[kv_namespaces]]
+binding = "RADAR_KV"
+id = "8f48f4a99284495b9999fd85390a9ddc"
+
+[ai]
+binding = "AI"
+
+[[routes]]
+pattern = "radar.espacio-latente.com"
+custom_domain = true
