@@ -13,7 +13,7 @@
  */
 import { FUENTES } from './sources.js';
 import { obtenerItems } from './feed.js';
-import { resumir, esRelevantePorPalabraClave, esReleaseSignificativo } from './resumen.js';
+import { resumir, esReleaseSignificativo } from './resumen.js';
 import { renderDigest, renderArchivoIndice, renderError } from './paginas.js';
 
 const TTL_DIA = 60 * 60 * 24 * 400; // ~13 meses de archivo
@@ -150,7 +150,6 @@ async function ejecutarDigest(env, fuentes) {
     for (const item of items) {
       if (!item.titulo || !item.link) continue;
       if (vistos.has(item.link)) continue;
-      if (fuente.filtrarPorPalabraClave && !esRelevantePorPalabraClave(item)) continue;
       if (fuente.tipo === 'github_release' && !esReleaseSignificativo(fuente, item)) continue;
 
       vistos.add(item.link);

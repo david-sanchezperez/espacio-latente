@@ -44,8 +44,11 @@ export const FUENTES = [
   { nombre: 'arXiv cs.LG', url: 'https://rss.arxiv.org/rss/cs.LG', tipo: 'feed' },
   { nombre: 'Hugging Face Blog', url: 'https://huggingface.co/blog/feed.xml', tipo: 'feed' },
 
-  // --- Comunidad (se filtra por palabras clave de IA al procesar) ---
-  { nombre: 'Hacker News', url: 'https://news.ycombinator.com/rss', tipo: 'feed', filtrarPorPalabraClave: true },
+  // --- Comunidad (mezcla mucho no-IA; la relevancia la juzga el propio
+  // paso de resumen, no un filtro de palabras clave — más consistente y
+  // sin listas que mantener. `limite` bajo para no disparar el número de
+  // resúmenes de una fuente que en 30h trae de todo).
+  { nombre: 'Hacker News', url: 'https://news.ycombinator.com/rss', tipo: 'feed', limite: 12 },
 
   // --- GitHub Releases (código, no noticias) ---
   { nombre: 'transformers (release)', url: 'https://github.com/huggingface/transformers/releases.atom', tipo: 'github_release' },
@@ -54,11 +57,4 @@ export const FUENTES = [
   { nombre: 'Ollama (release)', url: 'https://github.com/ollama/ollama/releases.atom', tipo: 'github_release' },
   { nombre: 'Anthropic SDK Python (release)', url: 'https://github.com/anthropics/anthropic-sdk-python/releases.atom', tipo: 'github_release' },
   { nombre: 'OpenAI SDK Python (release)', url: 'https://github.com/openai/openai-python/releases.atom', tipo: 'github_release' },
-];
-
-// Palabras clave para filtrar Hacker News (mezcla mucho contenido no-IA).
-export const PALABRAS_CLAVE_IA = [
-  'ai ', ' ai', 'llm', 'gpt', 'claude', 'gemini', 'anthropic', 'openai',
-  'deepmind', 'machine learning', 'neural', 'transformer', 'agent',
-  'chatbot', 'artificial intelligence', 'mistral', 'llama',
 ];

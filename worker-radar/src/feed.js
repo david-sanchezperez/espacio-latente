@@ -56,7 +56,7 @@ export async function obtenerItems(fuente) {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} en ${fuente.url}`);
   const xml = await res.text();
-  const items = parsearFeed(xml).slice(0, 20);
+  const items = parsearFeed(xml).slice(0, fuente.limite || 20);
 
   // Primera vuelta de una fuente nueva: sin fecha fiable, no descartamos
   // por antigüedad, el dedupe por KV ya evita repetir en las siguientes.
