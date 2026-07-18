@@ -175,5 +175,16 @@ async function ejecutarDigest(env, fuentes) {
     await env.RADAR_KV.put(claveDia, JSON.stringify([...existentesHoy, ...nuevos]), { expirationTtl: TTL_DIA });
   }
 
+  const fuentesConError = Object.keys(errores).length;
+  const resumenLinea = `[radar] pasada ${hoy}: ${nuevos.length} nuevas, ${fuentesConError}/${fuentes.length} fuentes con error`;
+  if (fuentesConError === fuentes.length && fuentes.length > 0) {
+    // Fallo total: todas las fuentes de esta pasada fallaron. Sin canal de
+    // alertas activo por ahora — esto queda como la señal a buscar con
+    // `wrangler tail` o en el dashboard si algo raro pasa.
+    console.error(`${resumenLinea} — FALLO TOTAL DE LA PASADA`);
+  } else {
+    console.log(resumenLinea);
+  }
+
   return { fecha: hoy, totalNuevos: nuevos.length, porFuente, errores };
 }
