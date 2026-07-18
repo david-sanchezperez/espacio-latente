@@ -3,6 +3,7 @@ titulo: "¿Qué es el espacio latente? La geometría del significado"
 resumen: "Primer módulo de la serie 'Por dentro de los LLM': por qué el significado se puede medir como distancia y dirección entre vectores."
 estado: pruebas
 unidad: "U-03"
+serie: fundamentos
 fecha: 2026-07-24
 ---
 

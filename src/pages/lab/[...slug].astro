@@ -1,9 +1,10 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { getCollection, render } from 'astro:content';
+import { t } from '../../i18n/ui';
 
 export async function getStaticPaths() {
-  const experimentos = await getCollection('experimentos');
+  const experimentos = await getCollection('experimentos', ({ data }) => data.lang === 'es');
   return experimentos.map((exp) => ({
     params: { slug: exp.id },
     props: { exp },
@@ -12,8 +13,11 @@ export async function getStaticPaths() {
 
 const { exp } = Astro.props;
 const { Content } = await render(exp);
+const strings = t('es');
+const traducciones = await getCollection('experimentos', ({ data }) => data.lang === 'en');
+const altHref = traducciones.some((entry) => entry.id === `en/${exp.id}`) ? `/en/lab/${exp.id}/` : undefined;
 ---
-<Base titulo={`${exp.data.titulo} — El Rack`} descripcion={exp.data.resumen}>
+<Base titulo={`${exp.data.titulo} — El Rack`} descripcion={exp.data.resumen} lang="es" altHref={altHref}>
   <article class="articulo">
     <p class="etiqueta">
       {exp.data.unidad} · {exp.data.estado} ·
@@ -21,6 +25,6 @@ const { Content } = await render(exp);
     </p>
     <h1>{exp.data.titulo}</h1>
     <Content />
-    <p style="margin-top: 3rem;"><a href="/#lab">← volver al rack</a></p>
+    <p style="margin-top: 3rem;"><a href="/#lab">{strings['articulo.volver']}</a></p>
   </article>
 </Base>

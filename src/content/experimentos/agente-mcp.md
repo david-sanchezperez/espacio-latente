@@ -3,6 +3,7 @@ titulo: "Cómo interactúa un agente con un servidor MCP"
 resumen: "Anatomía de una llamada: del prompt a la herramienta y de vuelta."
 estado: archivado
 unidad: "U-04"
+serie: agentes
 fecha: 2026-07-11
 ---
 

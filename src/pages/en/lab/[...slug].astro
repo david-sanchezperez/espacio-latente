@@ -1,0 +1,28 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { getCollection, render } from 'astro:content';
+import { t } from '../../../i18n/ui';
+
+export async function getStaticPaths() {
+  const experimentos = await getCollection('experimentos', ({ data }) => data.lang === 'en');
+  return experimentos.map((exp) => ({
+    params: { slug: exp.id.replace(/^en\//, '') },
+    props: { exp, slug: exp.id.replace(/^en\//, '') },
+  }));
+}
+
+const { exp, slug } = Astro.props;
+const { Content } = await render(exp);
+const strings = t('en');
+---
+<Base titulo={`${exp.data.titulo} — The Rack`} descripcion={exp.data.resumen} lang="en" altHref={`/lab/${slug}/`}>
+  <article class="articulo">
+    <p class="etiqueta">
+      {exp.data.unidad} · {exp.data.estado} ·
+      {exp.data.fecha.toLocaleDateString('en-GB', { year: 'numeric', month: 'long' })}
+    </p>
+    <h1>{exp.data.titulo}</h1>
+    <Content />
+    <p style="margin-top: 3rem;"><a href="/en/#lab">{strings['articulo.volver']}</a></p>
+  </article>
+</Base>

@@ -10,6 +10,7 @@
   /* Paleta */
   --grafito: #12151a;        /* fondo: chasis del rack */
   --panel: #1a1f26;          /* módulos */
+  --panel-alt: #171c24;      /* paneles secundarios: barras, cabeceras */
   --borde: #2c333d;          /* aristas del metal */
   --hueso: #e9e5da;          /* texto principal */
   --acero: #8a97a5;          /* texto secundario */
@@ -59,6 +60,34 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 
 .contenedor { max-width: 880px; margin: 0 auto; padding: 0 1.25rem; }
+
+/* --- Chasis: barra superior (marca + selector de idioma) --- */
+.chasis {
+  border-bottom: 1px solid var(--borde);
+  background: rgba(18, 21, 26, 0.92);
+  backdrop-filter: blur(6px);
+}
+.chasis-fila {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+}
+.chasis-marca {
+  font-family: var(--f-mono); font-size: 0.82rem; color: var(--hueso);
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.chasis-marca:hover { color: var(--hueso); text-decoration: none; }
+.chasis-punto {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--led-verde); box-shadow: 0 0 8px var(--led-verde);
+  display: inline-block;
+}
+.chasis-idioma {
+  font-family: var(--f-mono); font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--acero); border: 1px solid var(--borde);
+  padding: 0.3rem 0.65rem;
+}
+.chasis-idioma:hover { color: var(--ambar); border-color: var(--ambar); text-decoration: none; }
 
 /* --- Etiquetas técnicas (eyebrows) --- */
 .etiqueta {
@@ -147,6 +176,96 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 .led.online::before { background: var(--led-verde); box-shadow: 0 0 8px var(--led-verde); }
 .led.pruebas::before { background: var(--led-ambar); box-shadow: 0 0 8px var(--led-ambar); }
+.led.proximo::before { background: var(--borde); }
+
+/* --- Series (bastidores temáticos dentro del rack) --- */
+.serie { margin-bottom: 2.75rem; }
+.serie:last-child { margin-bottom: 0; }
+.serie-cabecera {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 0.6rem;
+}
+.serie-cabecera h3 {
+  font-family: var(--f-mono); font-size: 0.95rem; font-weight: 500;
+  color: var(--hueso);
+}
+.serie-progreso {
+  font-family: var(--f-mono); font-size: 0.72rem; color: var(--acero);
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.serie-progreso .barra {
+  width: 70px; height: 4px; background: var(--panel);
+  border: 1px solid var(--borde); position: relative; overflow: hidden;
+}
+.serie-progreso .barra i { position: absolute; inset: 0; background: var(--ambar); display: block; }
+.serie-nota { color: var(--acero); font-size: 0.85rem; margin: 0 0 0.9rem; }
+
+.modulo.proximo { opacity: 0.55; }
+.modulo.proximo h3 a { pointer-events: none; color: var(--acero); }
+
+.modulo.sin-traducir { border-style: dashed; }
+.modulo.sin-traducir .resumen a { font-size: 0.85rem; }
+
+/* --- Sala de máquinas: proyectos --- */
+.blade {
+  background: var(--panel-alt);
+  border: 1px solid var(--borde);
+  padding: 1.5rem 1.6rem;
+  margin-bottom: 1rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1.5rem;
+  position: relative;
+}
+.blade:last-child { margin-bottom: 0; }
+.blade::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--led-verde);
+}
+.blade.pausado::before { background: var(--led-gris); }
+.blade-cabecera { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
+.blade h3 { font-family: var(--f-display); font-size: 1.25rem; font-weight: 700; }
+.blade .resumen { color: var(--acero); font-size: 0.92rem; max-width: 54ch; margin-bottom: 0.9rem; }
+.blade-stack { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.blade-stack span {
+  font-family: var(--f-mono); font-size: 0.7rem; color: var(--acero);
+  border: 1px solid var(--borde); padding: 0.2rem 0.55rem;
+}
+.blade-enlaces { display: flex; gap: 1.25rem; font-family: var(--f-mono); font-size: 0.8rem; }
+.blade-enlaces a::before { content: '↳ '; color: var(--acero); }
+.blade-meta {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 0.6rem;
+  justify-content: space-between; text-align: right;
+}
+@media (max-width: 640px) {
+  .blade { grid-template-columns: 1fr; }
+  .blade-meta { flex-direction: row; align-items: center; justify-content: space-between; }
+}
+
+/* --- El agente en vivo: consola de fósforo verde --- */
+.agente-vivo-marco {
+  background: #0d0f13;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(255, 180, 84, 0.06);
+}
+.agente-vivo-cabecera {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.55rem 0.8rem;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--borde);
+}
+.agente-vivo-cabecera .semaforo { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.agente-vivo-cabecera .titulo-barra {
+  margin-left: 0.6rem;
+  font-family: var(--f-mono); font-size: 0.72rem; color: var(--acero);
+  letter-spacing: 0.04em;
+}
+.agente-vivo-cabecera .led { padding: 0; margin-left: auto; }
+.agente-vivo-nota {
+  margin-top: 1.1rem; font-family: var(--f-body); font-size: 0.85rem; color: var(--acero);
+}
 
 /* --- Artículos del laboratorio --- */
 .articulo { padding: 3.5rem 0 5rem; }

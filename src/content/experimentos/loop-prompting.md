@@ -3,6 +3,7 @@ titulo: "Loop prompting: iterar hasta converger"
 resumen: "Cuándo compensa que el modelo critique y reescriba su propia salida."
 estado: archivado
 unidad: "U-05"
+serie: agentes
 fecha: 2026-07-11
 ---
 

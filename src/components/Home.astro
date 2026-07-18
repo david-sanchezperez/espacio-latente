@@ -1,0 +1,287 @@
+---
+import Base from '../layouts/Base.astro';
+import AgenteBio from '../components/AgenteBio.jsx';
+import TerminalBio from '../components/TerminalBio.jsx';
+import { getCollection } from 'astro:content';
+import { t, type Idioma } from '../i18n/ui';
+
+interface Props {
+  lang: Idioma;
+}
+const { lang } = Astro.props;
+const strings = t(lang);
+const prefijo = lang === 'es' ? '' : '/en';
+
+const experimentos = (
+  await getCollection('experimentos', ({ data }) => data.estado !== 'archivado' && data.lang === lang)
+).sort((a, b) => a.data.unidad.localeCompare(b.data.unidad));
+
+// En inglés, además de lo ya traducido, señalamos lo que solo existe en
+// español todavía — mejor un aviso claro que fingir que no existe.
+const experimentosEsSinTraducir =
+  lang === 'en'
+    ? (await getCollection('experimentos', ({ data }) => data.estado !== 'archivado' && data.lang === 'es')).filter(
+        (esExp) => !experimentos.some((enExp) => enExp.id === `en/${esExp.id}`)
+      )
+    : [];
+
+const proyectos = (await getCollection('proyectos', ({ data }) => data.lang === lang)).sort(
+  (a, b) => b.data.fecha.getTime() - a.data.fecha.getTime()
+);
+
+// Series temáticas: agrupan los módulos del rack por tema. El campo
+// `serie` en el frontmatter de cada experimento decide a cuál pertenece.
+const SERIES =
+  lang === 'es'
+    ? [
+        {
+          id: 'fundamentos',
+          titulo: 'Por dentro de los LLM',
+          nota: 'La mecánica interna: atención, representación, compresión y unidades mínimas de texto.',
+          extra: [],
+          proximos: [
+            { titulo: 'Autoencoders: comprimir para entender', resumen: 'Cómo un modelo aprende a resumir sin perder lo esencial.' },
+            { titulo: 'Tokenización: de texto a números', resumen: 'El primer paso, y por qué el modelo no ve palabras sino fragmentos.' },
+          ],
+        },
+        {
+          id: 'agentes',
+          titulo: 'Agentes, paso a paso',
+          nota: 'Con los fundamentos en el rack: cómo un modelo pasa de predecir texto a actuar.',
+          extra: [
+            {
+              unidad: 'U-01',
+              href: '#agente',
+              titulo: 'Agente-bio',
+              resumen: 'Un agente que responde por mí: quién soy, qué hago y por qué.',
+              estado: 'pruebas',
+            },
+          ],
+          proximos: [],
+        },
+      ]
+    : [
+        {
+          id: 'fundamentos',
+          titulo: 'Inside the LLM',
+          nota: 'The inner mechanics: attention, representation, compression, and the smallest units of text.',
+          extra: [],
+          proximos: [
+            { titulo: 'Autoencoders: compressing to understand', resumen: 'How a model learns to summarize without losing what matters.' },
+            { titulo: 'Tokenization: from text to numbers', resumen: "The first step, and why the model doesn't see words but fragments." },
+          ],
+        },
+        {
+          id: 'agentes',
+          titulo: 'Agents, step by step',
+          nota: 'With the foundations already in the rack: how a model goes from predicting text to acting.',
+          extra: [
+            {
+              unidad: 'U-01',
+              href: '#agente',
+              titulo: 'Agent-bio',
+              resumen: "An agent that speaks for me: who I am, what I do, and why.",
+              estado: 'pruebas',
+            },
+          ],
+          proximos: [],
+        },
+      ];
+
+const modulosPorSerie = SERIES.map((serie) => {
+  const publicados = [
+    ...serie.extra,
+    ...experimentos
+      .filter((exp) => exp.data.serie === serie.id)
+      .map((exp) => ({
+        unidad: exp.data.unidad,
+        href: `${prefijo}/lab/${exp.id}/`,
+        titulo: exp.data.titulo,
+        resumen: exp.data.resumen,
+        estado: exp.data.estado,
+      })),
+  ];
+  const sinTraducir = experimentosEsSinTraducir
+    .filter((exp) => exp.data.serie === serie.id)
+    .map((exp) => ({
+      unidad: exp.data.unidad,
+      href: `/lab/${exp.id}/`,
+      titulo: exp.data.titulo,
+      resumen: exp.data.resumen,
+    }));
+  return { ...serie, publicados, sinTraducir, total: publicados.length + serie.proximos.length };
+});
+
+const totalModulos = modulosPorSerie.reduce((acc, s) => acc + s.publicados.length, 0);
+
+const lineasBio =
+  lang === 'es'
+    ? [
+        '> whoami',
+        'David Sánchez Pérez — construyendo cosas con IA.',
+        '> cat espacio-latente.md',
+        'Aquí fraguo lo que voy aprendiendo sobre agentes, MCP y prompting.',
+        'Cada módulo del rack es una idea que ha colapsado en algo concreto.',
+        '> _',
+      ]
+    : [
+        '> whoami',
+        "David Sánchez Pérez — building things with AI.",
+        '> cat espacio-latente.md',
+        "This is where I forge what I'm learning about agents, MCP and prompting.",
+        'Every module in the rack is an idea that collapsed into something concrete.',
+        '> _',
+      ];
+---
+<Base lang={lang} titulo={lang === 'es' ? 'Espacio Latente' : 'Espacio Latente — Latent Space'}>
+  <!-- HERO -->
+  <section class="hero">
+    <p class="etiqueta">// espacio-latente.com</p>
+    <h1>{strings['hero.titulo1']}<br /><span class="ambar">{strings['hero.titulo2']}</span></h1>
+    <div style="margin-top: 1.75rem;">
+      <TerminalBio client:load lineas={lineasBio} />
+    </div>
+  </section>
+
+  <!-- MÓDULO U-01: EL AGENTE EN VIVO -->
+  <section class="rack" id="agente">
+    <AgenteBio client:visible lang={lang} />
+  </section>
+
+  <!-- EL RACK: SERIES TEMÁTICAS -->
+  <section class="rack" id="lab">
+    <div class="rack-titulo">
+      <h2>{strings['rack.titulo']}</h2>
+      <span class="etiqueta">{strings['rack.contador'](totalModulos)}</span>
+    </div>
+
+    {modulosPorSerie.map((serie) => (
+      <div class="serie">
+        <div class="serie-cabecera">
+          <h3>{serie.titulo}</h3>
+          {serie.total > 0 && (
+            <div class="serie-progreso">
+              {strings['serie.publicados'](serie.publicados.length, serie.total)}
+              <div class="barra"><i style={`width:${Math.round((serie.publicados.length / serie.total) * 100)}%`}></i></div>
+            </div>
+          )}
+        </div>
+        <p class="serie-nota">{serie.nota}</p>
+
+        {serie.publicados.map((mod) => (
+          <article class="modulo">
+            <span class="unidad">{mod.unidad}</span>
+            <div>
+              <h3><a href={mod.href}>{mod.titulo}</a></h3>
+              <p class="resumen">{mod.resumen}</p>
+            </div>
+            <span class={`led ${mod.estado}`}>{strings[`estado.${mod.estado}` as keyof typeof strings]}</span>
+          </article>
+        ))}
+
+        {serie.sinTraducir.map((mod) => (
+          <article class="modulo sin-traducir">
+            <span class="unidad">{mod.unidad}</span>
+            <div>
+              <h3><a href={mod.href}>{mod.titulo}</a></h3>
+              <p class="resumen">{strings['serie.sinTraducir']} <a href={mod.href}>{strings['serie.leerEs']}</a></p>
+            </div>
+            <span class="led">ES</span>
+          </article>
+        ))}
+
+        {serie.proximos.map((prox) => (
+          <article class="modulo proximo">
+            <span class="unidad">·</span>
+            <div>
+              <h3><a href="#">{prox.titulo}</a></h3>
+              <p class="resumen">{prox.resumen}</p>
+            </div>
+            <span class="led proximo">{strings['serie.proximo']}</span>
+          </article>
+        ))}
+      </div>
+    ))}
+  </section>
+
+  <!-- LA SALA DE MÁQUINAS: PROYECTOS -->
+  <section class="rack" id="maquinas">
+    <div class="rack-titulo">
+      <h2>{strings['maquinas.titulo']}</h2>
+      <span class="etiqueta">{strings['maquinas.contador'](proyectos.length)}</span>
+    </div>
+    <p class="serie-nota" style="margin-bottom: 1.25rem;">{strings['maquinas.nota']}</p>
+
+    {proyectos.map((proy) => (
+      <article class={`blade ${proy.data.estado === 'pausado' ? 'pausado' : ''}`}>
+        <div>
+          <div class="blade-cabecera">
+            <h3>{proy.data.titulo}</h3>
+            <span class={`led ${proy.data.estado === 'activo' ? 'online' : ''}`}>{strings[`estado.${proy.data.estado}` as keyof typeof strings]}</span>
+          </div>
+          <p class="resumen">{proy.data.resumen}</p>
+          <div class="blade-stack">
+            {proy.data.stack.map((tec) => <span>{tec}</span>)}
+          </div>
+          <div class="blade-enlaces">
+            {proy.data.repo_url && <a href={proy.data.repo_url}>{strings['maquinas.repo']}</a>}
+            {proy.data.demo_url && <a href={proy.data.demo_url}>{strings['maquinas.demo']}</a>}
+          </div>
+        </div>
+        <div class="blade-meta">
+          <span class="etiqueta">
+            {strings['maquinas.desde']} {proy.data.fecha.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-GB', { year: 'numeric', month: 'short' })}
+          </span>
+        </div>
+      </article>
+    ))}
+  </section>
+
+  <!-- BUZÓN DE PETICIONES -->
+  <section class="buzon" id="buzon">
+    <div class="rack-titulo">
+      <h2>{strings['buzon.titulo']}</h2>
+      <span class="etiqueta">{strings['buzon.eyebrow']}</span>
+    </div>
+    <p style="margin: 1.25rem 0; color: var(--acero);">{strings['buzon.intro']}</p>
+    <form class="form-buzon" action="https://api.web3forms.com/submit" method="POST">
+      <input type="hidden" name="access_key" value="cab570f5-1090-4775-8faf-c75881ba1832" />
+      <input type="text" name="nombre" placeholder={strings['buzon.nombre']} />
+      <input type="email" name="email" placeholder={strings['buzon.email']} />
+      <textarea name="mensaje" placeholder={strings['buzon.mensaje']} required></textarea>
+      <button type="submit">{strings['buzon.enviar']}</button>
+      <p class="estado-buzon etiqueta" style="min-height: 1.2em;"></p>
+    </form>
+  </section>
+</Base>
+
+<script define:vars={{ enviando: strings['buzon.enviando'], ok: strings['buzon.ok'], errorRed: strings['buzon.errorRed'] }}>
+  const form = document.querySelector('.form-buzon');
+  const estado = form?.querySelector('.estado-buzon');
+
+  form?.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const boton = form.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    estado.textContent = enviando;
+
+    try {
+      const respuesta = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: { Accept: 'application/json' },
+      });
+      const datos = await respuesta.json();
+      if (datos.success) {
+        estado.textContent = ok;
+        form.reset();
+      } else {
+        estado.textContent = datos.message || errorRed;
+      }
+    } catch (err) {
+      estado.textContent = errorRed;
+    } finally {
+      boton.disabled = false;
+    }
+  });
+</script>

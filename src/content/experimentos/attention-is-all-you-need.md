@@ -3,6 +3,7 @@ titulo: "Attention Is All You Need: la semilla de la IA generativa moderna"
 resumen: "El paper de 2017 que cambió el paradigma: de leer palabra a palabra a que todas se consulten entre sí a la vez."
 estado: pruebas
 unidad: "U-02"
+serie: fundamentos
 fecha: 2026-07-16
 ---
 

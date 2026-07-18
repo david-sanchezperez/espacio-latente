@@ -1,22 +1,47 @@
 ---
 import '../styles/global.css';
-const { titulo = 'Espacio Latente', descripcion = 'Ideas en estado latente, decodificadas en experimentos. Agentes, MCP y documentación sobre IA aplicada.' } = Astro.props;
+import { t, type Idioma } from '../i18n/ui';
+
+interface Props {
+  titulo?: string;
+  descripcion?: string;
+  lang?: Idioma;
+  /** URL de la versión equivalente en el otro idioma, para el selector y los hreflang. */
+  altHref?: string;
+}
+
+const { titulo = 'Espacio Latente', descripcion, lang = 'es', altHref } = Astro.props;
+const strings = t(lang);
+const desc = descripcion ?? strings['meta.descripcion'];
+const otroIdioma: Idioma = lang === 'es' ? 'en' : 'es';
+const enlaceIdioma = altHref ?? (lang === 'es' ? '/en/' : '/');
+const enlaceBuzon = lang === 'es' ? '/#buzon' : '/en/#buzon';
 ---
 <!doctype html>
-<html lang="es">
+<html lang={lang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{titulo}</title>
-    <meta name="description" content={descripcion} />
+    <meta name="description" content={desc} />
+    <link rel="alternate" hreflang="es" href={lang === 'es' ? Astro.url.pathname : enlaceIdioma} />
+    <link rel="alternate" hreflang="en" href={lang === 'en' ? Astro.url.pathname : enlaceIdioma} />
   </head>
   <body>
+    <nav class="chasis">
+      <div class="contenedor chasis-fila">
+        <a class="chasis-marca" href={lang === 'es' ? '/' : '/en/'}>
+          <span class="chasis-punto"></span> espacio-latente.com
+        </a>
+        <a class="chasis-idioma" href={enlaceIdioma} hreflang={otroIdioma}>{strings['idioma.cambiar']}</a>
+      </div>
+    </nav>
     <main class="contenedor">
       <slot />
     </main>
     <footer>
       <div class="contenedor">
-        ESPACIO LATENTE v0.1 — hecho con Astro + Claude · <a href="/#buzon">buzón de peticiones</a>
+        {strings['footer.texto']} · <a href={enlaceBuzon}>{strings['footer.buzon']}</a>
       </div>
     </footer>
   </body>
