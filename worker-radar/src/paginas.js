@@ -48,6 +48,7 @@ function envoltorio(titulo, cuerpo) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${titulo} — Radar · Espacio Latente</title>
+  <link rel="alternate" type="application/atom+xml" title="El radar — Espacio Latente" href="/feed.xml" />
   <style>${ESTILO}</style>
 </head>
 <body>
@@ -60,6 +61,7 @@ function envoltorio(titulo, cuerpo) {
         y releases relevantes, resumido y con link al original. Se actualiza dos veces al día.
         · <a href="https://espacio-latente.com/">← volver a espacio-latente.com</a>
         · <a href="/archivo">archivo</a>
+        · <a href="/feed.xml">RSS</a>
       </p>
     </header>
     ${cuerpo}
@@ -102,6 +104,49 @@ export function renderArchivoIndice(fechas) {
 
 export function renderError(mensaje) {
   return envoltorio('Error', `<section class="seccion"><p class="vacio">Algo falló: ${escapar(mensaje)}</p></section>`);
+}
+
+/**
+ * Atom feed (RFC 4287) con lo mismo que se ve en la home (hoy + ayer).
+ * Entradas ordenadas por fecha descendente; si una pieza antigua no tiene
+ * `fecha` guardada (formato previo a este cambio), cae al final.
+ */
+export function renderFeedAtom({ origen, items }) {
+  const ordenados = [...items].sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
+  const actualizado = ordenados[0]?.fecha || new Date().toISOString();
+
+  const entradas = ordenados
+    .map(
+      (item) => `  <entry>
+    <title>${escaparXml(item.titulo)}</title>
+    <link href="${escaparXml(item.link)}" />
+    <id>${escaparXml(item.link)}</id>
+    <updated>${new Date(item.fecha || Date.now()).toISOString()}</updated>
+    <author><name>${escaparXml(item.fuente)}</name></author>
+    <summary>${escaparXml(item.resumen)}</summary>
+  </entry>`
+    )
+    .join('\n');
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>El radar — Espacio Latente</title>
+  <subtitle>Píldora diaria de IA: laboratorios, papers, blogs de referencia y releases relevantes.</subtitle>
+  <link href="${origen}/feed.xml" rel="self" />
+  <link href="${origen}/" />
+  <id>${origen}/</id>
+  <updated>${new Date(actualizado).toISOString()}</updated>
+${entradas}
+</feed>`;
+}
+
+function escaparXml(texto) {
+  return String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 function escapar(texto) {

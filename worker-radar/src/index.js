@@ -14,7 +14,7 @@
 import { FUENTES } from './sources.js';
 import { obtenerItems } from './feed.js';
 import { resumir, esReleaseSignificativo } from './resumen.js';
-import { renderDigest, renderArchivoIndice, renderError } from './paginas.js';
+import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom } from './paginas.js';
 
 const TTL_DIA = 60 * 60 * 24 * 400; // ~13 meses de archivo
 
@@ -35,6 +35,9 @@ export default {
       }
       if (partes[0] === 'ejecutar' && request.method === 'POST') {
         return await ejecutarManual(request, env);
+      }
+      if (partes[0] === 'feed.xml' && partes.length === 1) {
+        return await paginaFeed(env, url.origin);
       }
       return new Response('No encontrado', { status: 404 });
     } catch (err) {
@@ -94,6 +97,16 @@ async function paginaDia(env, fecha) {
   const items = await leerDia(env, fecha);
   return new Response(renderDigest({ hoy: fecha, ayer: null, itemsHoy: items, itemsAyer: [], soloUnDia: true }), {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
+async function paginaFeed(env, origen) {
+  const hoy = fechaISO(0);
+  const ayer = fechaISO(-1);
+  const itemsHoy = await leerDia(env, hoy);
+  const itemsAyer = await leerDia(env, ayer);
+  return new Response(renderFeedAtom({ origen, items: [...itemsHoy, ...itemsAyer] }), {
+    headers: { 'Content-Type': 'application/atom+xml; charset=utf-8' },
   });
 }
 
@@ -163,6 +176,7 @@ async function ejecutarDigest(env, fuentes) {
         resumen,
         link: item.link,
         fuente: fuente.nombre,
+        fecha: item.fecha || new Date().toISOString(),
       });
       contador++;
     }

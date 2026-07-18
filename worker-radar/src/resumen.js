@@ -68,7 +68,6 @@ function desescapar(texto) {
  */
 export function esReleaseSignificativo(fuente, item) {
   const titulo = (item.titulo || '').trim();
-  if (/-rc\d*|-beta|-alpha|-preview/i.test(titulo)) return false;
 
   if (fuente.soloRaiz) {
     // LangChain taggea cada subpaquete por separado: "langchain-openai==1.3.5".
@@ -76,8 +75,11 @@ export function esReleaseSignificativo(fuente, item) {
     if (!/^langchain==\d/i.test(titulo)) return false;
   }
 
-  const version = titulo.match(/(\d+)\.(\d+)\.(\d+)/);
+  // El sufijo va pegado justo después del patch, con o sin guion — GitHub no
+  // es consistente: vLLM taggea "v0.24.0rc2" (sin guion), otros "v2.0.0-beta.1".
+  const version = titulo.match(/v?(\d+)\.(\d+)\.(\d+)([a-z0-9.-]*)/i);
   if (!version) return true; // sin versión clara identificable: mejor incluir que perder la pieza
-  const patch = version[3];
+  const [, , , patch, sufijo] = version;
+  if (/rc\d*|beta|alpha|preview/i.test(sufijo)) return false;
   return patch === '0'; // solo bumps de minor/major, no parches
 }
