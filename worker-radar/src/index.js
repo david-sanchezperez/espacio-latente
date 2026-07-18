@@ -36,9 +36,6 @@ export default {
       if (partes[0] === 'ejecutar' && request.method === 'POST') {
         return await ejecutarManual(request, env);
       }
-      if (partes[0] === 'diagnostico' && request.method === 'POST') {
-        return await diagnostico(request, env);
-      }
       return new Response('No encontrado', { status: 404 });
     } catch (err) {
       return new Response(renderError(err.message), {
@@ -81,27 +78,6 @@ async function ejecutarManual(request, env) {
   return new Response(JSON.stringify(resultado, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
-}
-
-async function diagnostico(request, env) {
-  const secreto = request.headers.get('X-Radar-Secret');
-  if (!env.RADAR_SECRET || secreto !== env.RADAR_SECRET) {
-    return new Response('No autorizado', { status: 403 });
-  }
-  try {
-    const respuesta = await env.AI.run('@cf/meta/llama-3.2-3b-instruct', {
-      messages: [{ role: 'user', content: 'Di "hola" y nada más.' }],
-      max_tokens: 50,
-    });
-    return new Response(JSON.stringify({ ok: true, respuesta }, null, 2), {
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: err.message, stack: err.stack }, null, 2), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
 }
 
 async function paginaHoy(env) {
