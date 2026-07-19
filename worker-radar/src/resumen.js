@@ -1,4 +1,6 @@
-const MODELO = '@cf/meta/llama-3.2-3b-instruct';
+const MODELO_WORKERS_AI = '@cf/meta/llama-3.2-3b-instruct';
+const MODELO_HAIKU = 'claude-haiku-4-5';
+const LONGITUD_MAXIMA_CONTENIDO = 8000; // ~2000 tokens — cubre snippet o artículo completo
 
 const SISTEMA_RESUMEN =
   'Evalúas y resumes noticias para "El Radar", un digest diario centrado específicamente en IA/ML/LLMs ' +
@@ -17,26 +19,33 @@ const SISTEMA_RESUMEN =
   'o sistema de IA).';
 
 /**
- * Evalúa relevancia y resume una pieza en una sola llamada a Workers AI
- * (mismo coste de subpeticiones que un resumen simple). El contenido del
- * artículo es de terceros y NO confiable — ver framing anti-inyección en
- * SISTEMA_RESUMEN.
+ * Evalúa relevancia y resume una pieza en una sola llamada (mismo coste de
+ * subpeticiones que un resumen simple). El contenido —snippet del RSS o
+ * artículo completo, lo que haya— es de terceros y NO confiable: ver
+ * framing anti-inyección en SISTEMA_RESUMEN, que aplica igual sea cual sea
+ * el proveedor.
+ *
+ * `opciones.proveedor`: 'workers-ai' (por defecto, incluido en la cuenta de
+ * Cloudflare) o 'haiku' (Claude Haiku vía API de Anthropic, requiere el
+ * secret ANTHROPIC_API_KEY). `opciones.textoArticulo`: si se pasa el texto
+ * completo del artículo (ver articulo.js), se usa en vez del snippet corto
+ * del RSS para un resumen con más sustancia.
  *
  * Devuelve { relevante, resumen }. Si algo falla (parseo o la llamada en
  * sí), se prefiere fallar "abierto" — mejor publicar de más que perder una
  * pieza real por un fallo técnico.
  */
-export async function resumir(env, item, fuente) {
-  const textoBase = `${item.titulo}\n\n${(item.descripcion || '').slice(0, 2000)}`;
+export async function resumir(env, item, fuente, opciones = {}) {
+  const { proveedor = 'workers-ai', textoArticulo } = opciones;
+  const cuerpo = (textoArticulo || item.descripcion || '').slice(0, LONGITUD_MAXIMA_CONTENIDO);
+  const contenidoUsuario = `Fuente: ${fuente.nombre}\n\n${item.titulo}\n\n${cuerpo}`;
+
   try {
-    const respuesta = await env.AI.run(MODELO, {
-      messages: [
-        { role: 'system', content: SISTEMA_RESUMEN },
-        { role: 'user', content: `Fuente: ${fuente.nombre}\n\n${textoBase}` },
-      ],
-      max_tokens: 220,
-    });
-    const texto = (respuesta && respuesta.response ? respuesta.response : '').trim();
+    const texto =
+      proveedor === 'haiku'
+        ? await llamarHaiku(env, contenidoUsuario)
+        : await llamarWorkersAI(env, contenidoUsuario);
+
     const match = texto.match(/RELEVANCIA:\s*(\d)[\s\S]*RESUMEN:\s*([\s\S]*)/i);
     if (match) {
       const relevancia = parseInt(match[1], 10);
@@ -48,9 +57,49 @@ export async function resumir(env, item, fuente) {
   } catch (err) {
     // Si falla la llamada, mejor publicar con el titular que perder la pieza —
     // pero deja rastro en los logs para poder depurarlo (`wrangler tail`).
-    console.error(`[radar] fallo resumiendo "${item.titulo}": ${err.message}`);
+    console.error(`[radar] fallo resumiendo (${proveedor}) "${item.titulo}": ${err.message}`);
     return { relevante: true, resumen: item.titulo };
   }
+}
+
+async function llamarWorkersAI(env, contenidoUsuario) {
+  const respuesta = await env.AI.run(MODELO_WORKERS_AI, {
+    messages: [
+      { role: 'system', content: SISTEMA_RESUMEN },
+      { role: 'user', content: contenidoUsuario },
+    ],
+    max_tokens: 220,
+  });
+  return ((respuesta && respuesta.response) || '').trim();
+}
+
+async function llamarHaiku(env, contenidoUsuario) {
+  // Fallo cerrado y explícito si falta el secret — mejor un error claro en
+  // los logs que una petición con la cabecera de auth vacía/rota.
+  if (!env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY no configurada (wrangler secret put ANTHROPIC_API_KEY)');
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: MODELO_HAIKU,
+      max_tokens: 300,
+      system: SISTEMA_RESUMEN,
+      messages: [{ role: 'user', content: contenidoUsuario }],
+    }),
+  });
+  if (!res.ok) {
+    // Nunca volcamos headers de la petición (llevarían la API key) al mensaje de error.
+    const cuerpo = await res.text();
+    throw new Error(`Haiku HTTP ${res.status}: ${cuerpo.slice(0, 200)}`);
+  }
+  const datos = await res.json();
+  return ((datos.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).trim();
 }
 
 function desescapar(texto) {

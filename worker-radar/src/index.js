@@ -14,6 +14,7 @@
 import { FUENTES } from './sources.js';
 import { obtenerItems } from './feed.js';
 import { resumir, esReleaseSignificativo } from './resumen.js';
+import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom } from './paginas.js';
 
 const TTL_DIA = 60 * 60 * 24 * 400; // ~13 meses de archivo
@@ -38,6 +39,9 @@ export default {
       }
       if (partes[0] === 'feed.xml' && partes.length === 1) {
         return await paginaFeed(env, url.origin);
+      }
+      if (partes[0] === 'comparar' && request.method === 'POST') {
+        return await paginaComparar(request, env);
       }
       return new Response('No encontrado', { status: 404 });
     } catch (err) {
@@ -65,13 +69,7 @@ export default {
  *   curl -X POST ".../ejecutar?mitad=manana"   # o "tarde" — para probar un reparto sin agotar el límite
  */
 async function ejecutarManual(request, env) {
-  const secreto = request.headers.get('X-Radar-Secret');
-  if (!env.RADAR_SECRET || secreto !== env.RADAR_SECRET) {
-    return new Response(JSON.stringify({ error: 'No autorizado' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  if (!autorizado(request, env)) return respuestaNoAutorizado();
   const mitad = new URL(request.url).searchParams.get('mitad');
   const fuentes =
     mitad === 'manana' || mitad === 'tarde'
@@ -81,6 +79,71 @@ async function ejecutarManual(request, env) {
   return new Response(JSON.stringify(resultado, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * Compara Workers AI vs Claude Haiku sobre las mismas piezas ya publicadas
+ * hoy, leyendo el artículo completo para ambos (no el snippet corto del
+ * RSS, que ya no tenemos guardado a estas alturas del pipeline). Protegido
+ * por secreto, sin escribir nada en el digest público — es solo para juzgar
+ * calidad a ojo antes de decidir si cambiar de proveedor.
+ *   curl -X POST "https://radar.espacio-latente.com/comparar?n=5" -H "X-Radar-Secret: ..."
+ *
+ * Deliberadamente NO acepta una URL por parámetro — el fetch de artículo
+ * solo opera sobre links que ya vienen del propio pipeline (fuentes fijas),
+ * nunca sobre una URL arbitraria del caller.
+ */
+async function paginaComparar(request, env) {
+  if (!autorizado(request, env)) return respuestaNoAutorizado();
+  const n = Math.min(parseInt(new URL(request.url).searchParams.get('n') || '5', 10) || 5, 8);
+  const itemsHoy = await leerDia(env, fechaISO(0));
+  const itemsAyer = await leerDia(env, fechaISO(-1));
+  const items = [...itemsHoy, ...itemsAyer].slice(0, n);
+
+  const resultados = [];
+  for (const item of items) {
+    const textoArticulo = await obtenerTextoArticulo(item.link);
+    const itemParaResumir = { titulo: item.titulo, link: item.link, descripcion: '' };
+    const fuenteFicticia = { nombre: item.fuente };
+    const [workersAi, haiku] = await Promise.all([
+      resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'workers-ai', textoArticulo }),
+      resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'haiku', textoArticulo }),
+    ]);
+    resultados.push({
+      titulo: item.titulo,
+      link: item.link,
+      articuloExtraido: textoArticulo ? `${textoArticulo.length} caracteres` : 'no se pudo leer, comparado solo con el título',
+      'workers-ai': workersAi,
+      haiku,
+    });
+  }
+
+  return new Response(JSON.stringify(resultados, null, 2), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function autorizado(request, env) {
+  const secreto = request.headers.get('X-Radar-Secret');
+  return Boolean(env.RADAR_SECRET) && comparacionSegura(secreto, env.RADAR_SECRET);
+}
+
+function respuestaNoAutorizado() {
+  return new Response(JSON.stringify({ error: 'No autorizado' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/** Comparación en tiempo constante — evita filtrar el secreto por temporización. */
+function comparacionSegura(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = new TextEncoder().encode(a);
+  const bufB = new TextEncoder().encode(b);
+  if (bufA.length !== bufB.length) return false;
+  let diferencia = 0;
+  for (let i = 0; i < bufA.length; i++) diferencia |= bufA[i] ^ bufB[i];
+  return diferencia === 0;
 }
 
 async function paginaHoy(env) {
