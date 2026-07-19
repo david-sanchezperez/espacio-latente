@@ -229,7 +229,11 @@ async function ejecutarDigest(env, fuentes) {
       if (fuente.tipo === 'github_release' && !esReleaseSignificativo(fuente, item)) continue;
 
       vistos.add(item.link);
-      const { relevante, resumen } = await resumir(env, item, fuente);
+      // Haiku, no Workers AI: en la comparación de hoy sus resúmenes fueron
+      // sistemáticamente más ricos (fechas, cifras concretas) con el mismo
+      // snippet de RSS. Decisión provisional — revisar si compensa el coste
+      // a medida que crezca el volumen.
+      const { relevante, resumen } = await resumir(env, item, fuente, { proveedor: 'haiku' });
       if (!relevante) {
         descartados++;
         continue;
