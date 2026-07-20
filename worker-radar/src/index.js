@@ -6,17 +6,25 @@
  * del sitio estático — ver worker-radar/README.md para el porqué de esta
  * arquitectura.
  *
+ * El cron y /ejecutar no procesan las fuentes directamente: las reparten en
+ * lotes pequeños (`COLA.FUENTES_POR_LOTE`) y encolan un mensaje por lote en
+ * `RADAR_QUEUE`. Cada mensaje se procesa en su propia invocación del
+ * consumer, con su propio presupuesto de 50 subrequests externos — ver
+ * DEVLOG.md para el porqué (una sola invocación con las 28 fuentes agotaba
+ * el límite, confirmado en producción con 59).
+ *
  * Despliegue:
  *   cd worker-radar
  *   npx wrangler kv namespace create RADAR_KV   (una vez; copia el id a wrangler.toml)
- *   npx wrangler deploy
+ *   npx wrangler queues create radar-fuentes    (una vez)
+ *   npx wrangler deploy --config ./wrangler.toml
  */
 import { FUENTES } from './sources.js';
 import { obtenerItems } from './feed.js';
 import { resumir, esReleaseSignificativo } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom } from './paginas.js';
-import { ARCHIVO } from './config.js';
+import { ARCHIVO, COLA } from './config.js';
 import { crearContadorSubrequests, registrarMetaPasada } from './costes.js';
 
 const TTL_DIA = ARCHIVO.TTL_DIA_SEGUNDOS;
@@ -61,15 +69,52 @@ export default {
     const esPasadaManana = event.cron === '0 7 * * *';
     const fuentes = FUENTES.filter((_, i) => (i % 2 === 0) === esPasadaManana);
     const pasada = `${fechaISO(0)}-${esPasadaManana ? 'am' : 'pm'}`;
-    ctx.waitUntil(ejecutarDigest(env, fuentes, pasada));
+    ctx.waitUntil(encolarPorLotes(env, fuentes, pasada));
+  },
+
+  /**
+   * Consumer de la cola `radar-fuentes`. Un mensaje = un lote pequeño de
+   * fuentes (`COLA.FUENTES_POR_LOTE`), procesado con `ejecutarDigest` igual
+   * que antes de la migración — el cambio es solo cuántas fuentes entran en
+   * cada invocación, no la lógica de dedup/resumen/publicación.
+   * `max_concurrency = 1` (wrangler.toml) evita que dos mensajes escriban a
+   * la vez en la misma clave de KV del día.
+   */
+  async queue(batch, env, ctx) {
+    for (const mensaje of batch.messages) {
+      const { fuentes, pasada } = mensaje.body;
+      try {
+        await ejecutarDigest(env, fuentes, pasada);
+        mensaje.ack();
+      } catch (err) {
+        console.error(`[radar] fallo procesando lote de cola (pasada ${pasada}): ${err.message}`);
+        mensaje.retry();
+      }
+    }
   },
 };
 
+/** Reparte `fuentes` en lotes de `COLA.FUENTES_POR_LOTE` y encola un mensaje por lote. */
+async function encolarPorLotes(env, fuentes, pasada) {
+  const lotes = [];
+  for (let i = 0; i < fuentes.length; i += COLA.FUENTES_POR_LOTE) {
+    lotes.push(fuentes.slice(i, i + COLA.FUENTES_POR_LOTE));
+  }
+  await Promise.all(lotes.map((lote) => env.RADAR_QUEUE.send({ fuentes: lote, pasada })));
+  return lotes.length;
+}
+
 /**
  * Disparo manual del digest, protegido por secreto — útil para forzar una
- * pasada fuera de horario o para depurar sin esperar al cron.
+ * pasada fuera de horario o para depurar sin esperar al cron. Encola por
+ * lotes igual que el cron (ver `encolarPorLotes`) en vez de procesar todo
+ * de golpe — un /ejecutar sin `mitad` sobre las 28 fuentes fue precisamente
+ * lo que agotó el límite de subrequests la primera vez que se probó.
+ * Responde de inmediato con cuántos lotes se encolaron; los resultados
+ * (nuevos items, errores, coste) se ven en D1/el digest público, no en la
+ * respuesta — el procesado real ocurre después, de forma asíncrona.
  *   curl -X POST https://radar.espacio-latente.com/ejecutar -H "X-Radar-Secret: ..."
- *   curl -X POST ".../ejecutar?mitad=manana"   # o "tarde" — para probar un reparto sin agotar el límite
+ *   curl -X POST ".../ejecutar?mitad=manana"   # o "tarde" — para probar solo un reparto
  */
 async function ejecutarManual(request, env) {
   if (!autorizado(request, env)) return respuestaNoAutorizado();
@@ -79,8 +124,8 @@ async function ejecutarManual(request, env) {
       ? FUENTES.filter((_, i) => (i % 2 === 0) === (mitad === 'manana'))
       : FUENTES;
   const pasada = `${fechaISO(0)}-manual${mitad ? `-${mitad}` : ''}`;
-  const resultado = await ejecutarDigest(env, fuentes, pasada);
-  return new Response(JSON.stringify(resultado, null, 2), {
+  const lotesEncolados = await encolarPorLotes(env, fuentes, pasada);
+  return new Response(JSON.stringify({ encolado: true, fuentes: fuentes.length, lotes: lotesEncolados, pasada }, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
 }

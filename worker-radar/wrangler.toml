@@ -23,6 +23,21 @@ database_id = "34c06153-9fe2-4f07-acb8-bafb0889749f"
 [ai]
 binding = "AI"
 
+# Migración a Queues (ver DEVLOG.md): el cron y /ejecutar ya no procesan
+# todas las fuentes de una pasada en una sola invocación (eso agotaba el
+# límite de 50 subrequests externos, confirmado en producción con 59). En
+# vez de eso encolan un mensaje por lote de fuentes; cada mensaje se
+# procesa en su propia invocación, con su propio presupuesto de 50.
+[[queues.producers]]
+queue = "radar-fuentes"
+binding = "RADAR_QUEUE"
+
+[[queues.consumers]]
+queue = "radar-fuentes"
+max_batch_size = 1
+max_concurrency = 1
+max_retries = 3
+
 [[routes]]
 pattern = "radar.espacio-latente.com"
 custom_domain = true

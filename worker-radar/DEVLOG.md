@@ -101,3 +101,53 @@ npx wrangler d1 create radar-costes
 npx wrangler d1 execute radar-costes --file=schema.sql --remote
 npx wrangler deploy
 ```
+
+## Fase 1 — cierre (2026-07-20)
+
+Aplicado en producción: D1 creada y schema ejecutado en remoto, worker
+desplegado, `RADAR_SECRET` rotado. Una pasada manual de verificación vía
+`/ejecutar` confirmó el registro end-to-end en `radar_llamadas_llm` (items
+procesados, coste real de Haiku, fila `meta_pasada`).
+
+Esa misma pasada de verificación, al correr sobre las 28 fuentes en una
+sola invocación (sin `?mitad=`), confirmó en vivo el riesgo que esta fase
+solo había anotado en teoría: **59 subrequests externos**, por encima del
+límite de 50 del free tier — 8 fuentes fallaron con "Too many subrequests".
+No era hipotético para fase 2 (embeddings): ya pasaba en fase 1, con el
+volumen de fuentes actual.
+
+**Decisión sobre cómo evitarlo, evaluada y descartada la alternativa de
+pago**: Workers Paid ($5/mes) sube el límite de subrequests a 1000, pero
+esto sube dinero real por resolver algo que Cloudflare Queues resuelve
+gratis (10.000 operaciones/día en el free tier, muy por encima de este
+volumen). Se descartó también migrar el vector store a infraestructura
+propia (NAS Synology) o usar hardware local (equipo de trading) para
+cómputo por lotes — ninguna de las dos resolvía un problema real: el cupo
+de Vectorize (~4880 vectores) ya cubre con margen la ventana de 90 días
+prevista, y el coste real de Haiku medido en D1 (~$0.0015-0.002/llamada)
+hace que ahorrar cambiando de proveedor de LLM en trabajos por lotes no
+compense la complejidad operativa de depender de hardware con
+disponibilidad parcial (el equipo de trading sigue el calendario de
+NASDAQ, apagado fines de semana/festivos — no cubre ni siquiera la pasada
+de las 07:00 UTC en ninguna época del año).
+
+**Migración a Queues, implementada y verificada**:
+- `wrangler.toml`: nuevo binding `RADAR_QUEUE` (productor y consumer de la
+  cola `radar-fuentes`), `max_batch_size = 1` y `max_concurrency = 1` —
+  evita que dos mensajes escriban a la vez en la misma clave de KV del día
+  (la dedup/publish de `ejecutarDigest` no es segura ante escrituras
+  concurrentes).
+- `config.js`: `COLA.FUENTES_POR_LOTE = 5`.
+- `index.js`: `scheduled()` y `ejecutarManual()` ya no llaman a
+  `ejecutarDigest` directamente — reparten las fuentes en lotes de 5 y
+  encolan un mensaje por lote (`encolarPorLotes`). El nuevo handler
+  `queue()` consume cada mensaje y llama a `ejecutarDigest` igual que
+  antes, pero solo sobre ese lote — la lógica de dedup/resumen/publicación
+  no cambió, solo cuántas fuentes entran en cada invocación.
+  `ejecutarManual` ahora responde de inmediato con el nº de lotes
+  encolados en vez del resultado síncrono; el resultado real se ve en
+  D1/el digest público.
+- Verificado en producción: pasada manual con 14 fuentes → 3 lotes → cada
+  uno registró su propia fila `meta_pasada` con 4-8 subrequests (antes: una
+  sola invocación con 55-59). Sin errores de "Too many subrequests" en
+  ningún lote.

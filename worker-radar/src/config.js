@@ -29,3 +29,11 @@ export const RESUMEN = {
 export const ARCHIVO = {
   TTL_DIA_SEGUNDOS: 60 * 60 * 24 * 400, // ~13 meses de archivo en KV
 };
+
+// Migración a Queues (ver DEVLOG.md): tamaño de lote de fuentes por mensaje.
+// Con 5 fuentes + sus items nuevos por mensaje, el peor caso observado en
+// producción (28 fuentes/31 items en una sola invocación = 59 subrequests)
+// queda repartido en lotes muy por debajo del límite de 50.
+export const COLA = {
+  FUENTES_POR_LOTE: 5,
+};
