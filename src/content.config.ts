@@ -8,7 +8,7 @@ const experimentos = defineCollection({
     resumen: z.string(),
     estado: z.enum(['online', 'pruebas', 'archivado']),
     unidad: z.string(), // etiqueta de rack, p.ej. "U-01"
-    serie: z.enum(['fundamentos', 'agentes']), // a qué bastidor temático pertenece
+    serie: z.enum(['fundamentos', 'agentes', 'bitacora']), // a qué bastidor temático pertenece
     lang: z.enum(['es', 'en']).default('es'),
     fecha: z.date(),
   }),
