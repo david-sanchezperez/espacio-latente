@@ -1,6 +1,9 @@
-const MODELO_WORKERS_AI = '@cf/meta/llama-3.2-3b-instruct';
-const MODELO_HAIKU = 'claude-haiku-4-5';
-const LONGITUD_MAXIMA_CONTENIDO = 8000; // ~2000 tokens — cubre snippet o artículo completo
+import { MODELOS, RESUMEN } from './config.js';
+import { fetchContado, registrarLlamada, estimarTokens } from './costes.js';
+
+const MODELO_WORKERS_AI = MODELOS.WORKERS_AI;
+const MODELO_HAIKU = MODELOS.HAIKU;
+const LONGITUD_MAXIMA_CONTENIDO = RESUMEN.LONGITUD_MAXIMA_CONTENIDO; // ~2000 tokens — cubre snippet o artículo completo
 
 const SISTEMA_RESUMEN =
   'Evalúas y resumes noticias para "El Radar", un digest diario de NOVEDADES muy recientes de IA/ML/LLMs ' +
@@ -44,21 +47,33 @@ const SISTEMA_RESUMEN =
  * pieza real por un fallo técnico.
  */
 export async function resumir(env, item, fuente, opciones = {}) {
-  const { proveedor = 'workers-ai', textoArticulo } = opciones;
+  const { proveedor = 'workers-ai', textoArticulo, contador = null, pasada = 'sin-pasada' } = opciones;
   const cuerpo = (textoArticulo || item.descripcion || '').slice(0, LONGITUD_MAXIMA_CONTENIDO);
   const contenidoUsuario = `Fuente: ${fuente.nombre}\n\n${item.titulo}\n\n${cuerpo}`;
+  const modelo = proveedor === 'haiku' ? MODELO_HAIKU : MODELO_WORKERS_AI;
 
   try {
-    const texto =
+    const { texto, tokensIn, tokensOut } =
       proveedor === 'haiku'
-        ? await llamarHaiku(env, contenidoUsuario)
+        ? await llamarHaiku(env, contenidoUsuario, contador)
         : await llamarWorkersAI(env, contenidoUsuario);
+
+    await registrarLlamada(env, {
+      pasada,
+      modelo,
+      proposito: 'relevancia_resumen',
+      tokensIn,
+      tokensOut,
+      itemLink: item.link,
+      fuente: fuente.nombre,
+      resultado: 'ok',
+    });
 
     const match = texto.match(/RELEVANCIA:\s*(\d)[\s\S]*RESUMEN:\s*([\s\S]*)/i);
     if (match) {
       const relevancia = parseInt(match[1], 10);
       const resumen = desescapar(match[2].trim());
-      return { relevante: relevancia >= 4, resumen: resumen || item.titulo };
+      return { relevante: relevancia >= RESUMEN.UMBRAL_RELEVANCIA, resumen: resumen || item.titulo };
     }
     // El modelo no siguió el formato: mejor incluirlo con lo que haya que perderlo.
     return { relevante: true, resumen: desescapar(texto) || item.titulo };
@@ -66,11 +81,31 @@ export async function resumir(env, item, fuente, opciones = {}) {
     // Si falla la llamada, mejor publicar con el titular que perder la pieza —
     // pero deja rastro en los logs para poder depurarlo (`wrangler tail`).
     console.error(`[radar] fallo resumiendo (${proveedor}) "${item.titulo}": ${err.message}`);
+    await registrarLlamada(env, {
+      pasada,
+      modelo,
+      proposito: 'relevancia_resumen',
+      tokensIn: estimarTokens(contenidoUsuario) + estimarTokens(SISTEMA_RESUMEN),
+      tokensOut: 0,
+      itemLink: item.link,
+      fuente: fuente.nombre,
+      resultado: 'error_estimado',
+    });
     return { relevante: true, resumen: item.titulo };
   }
 }
 
 async function llamarWorkersAI(env, contenidoUsuario) {
+  // Llamada a un binding nativo (no cuenta contra el límite de 50 subrequests
+  // externos del plan free) — no pasa por fetchContado.
+  //
+  // TODO fase 1 (verificar en producción, no reproducible en local): el
+  // nombre exacto de las claves de `respuesta.usage` para este modelo no
+  // está confirmado en la doc pública. Se prueban ambas convenciones
+  // habituales (prompt_tokens/completion_tokens y input_tokens/output_tokens)
+  // con fallback a 0 — si ambas fallan, la fila queda con coste 0 en vez de
+  // marcarse como estimada (solo se estima en fallo de llamada, no aquí).
+  // Confirmar con `wrangler tail` el primer día real y ajustar si hace falta.
   const respuesta = await env.AI.run(MODELO_WORKERS_AI, {
     messages: [
       { role: 'system', content: SISTEMA_RESUMEN },
@@ -78,16 +113,22 @@ async function llamarWorkersAI(env, contenidoUsuario) {
     ],
     max_tokens: 220,
   });
-  return ((respuesta && respuesta.response) || '').trim();
+  const texto = ((respuesta && respuesta.response) || '').trim();
+  const uso = (respuesta && respuesta.usage) || {};
+  return {
+    texto,
+    tokensIn: uso.prompt_tokens ?? uso.input_tokens ?? 0,
+    tokensOut: uso.completion_tokens ?? uso.output_tokens ?? 0,
+  };
 }
 
-async function llamarHaiku(env, contenidoUsuario) {
+async function llamarHaiku(env, contenidoUsuario, contador) {
   // Fallo cerrado y explícito si falta el secret — mejor un error claro en
   // los logs que una petición con la cabecera de auth vacía/rota.
   if (!env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY no configurada (wrangler secret put ANTHROPIC_API_KEY)');
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchContado(contador, 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -107,7 +148,9 @@ async function llamarHaiku(env, contenidoUsuario) {
     throw new Error(`Haiku HTTP ${res.status}: ${cuerpo.slice(0, 200)}`);
   }
   const datos = await res.json();
-  return ((datos.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).trim();
+  const texto = ((datos.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).trim();
+  const uso = datos.usage || {};
+  return { texto, tokensIn: uso.input_tokens || 0, tokensOut: uso.output_tokens || 0 };
 }
 
 function desescapar(texto) {

@@ -1,3 +1,5 @@
+import { fetchContado } from './costes.js';
+
 /**
  * Parser de RSS/Atom sin dependencias — el runtime de Workers no trae
  * DOMParser para XML arbitrario. Es un parser por regex, tolerante a CDATA
@@ -50,8 +52,8 @@ function limpiar(texto) {
     .trim();
 }
 
-export async function obtenerItems(fuente) {
-  const res = await fetch(fuente.url, {
+export async function obtenerItems(fuente, contador = null) {
+  const res = await fetchContado(contador, fuente.url, {
     headers: { 'User-Agent': 'espacio-latente-radar/1.0 (+https://espacio-latente.com)' },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} en ${fuente.url}`);

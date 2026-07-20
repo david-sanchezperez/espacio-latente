@@ -16,8 +16,10 @@ import { obtenerItems } from './feed.js';
 import { resumir, esReleaseSignificativo } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom } from './paginas.js';
+import { ARCHIVO } from './config.js';
+import { crearContadorSubrequests, registrarMetaPasada } from './costes.js';
 
-const TTL_DIA = 60 * 60 * 24 * 400; // ~13 meses de archivo
+const TTL_DIA = ARCHIVO.TTL_DIA_SEGUNDOS;
 
 export default {
   async fetch(request, env) {
@@ -58,7 +60,8 @@ export default {
     // Cada fuente se revisa una vez al día (no dos) — ver diseño en el chat.
     const esPasadaManana = event.cron === '0 7 * * *';
     const fuentes = FUENTES.filter((_, i) => (i % 2 === 0) === esPasadaManana);
-    ctx.waitUntil(ejecutarDigest(env, fuentes));
+    const pasada = `${fechaISO(0)}-${esPasadaManana ? 'am' : 'pm'}`;
+    ctx.waitUntil(ejecutarDigest(env, fuentes, pasada));
   },
 };
 
@@ -75,7 +78,8 @@ async function ejecutarManual(request, env) {
     mitad === 'manana' || mitad === 'tarde'
       ? FUENTES.filter((_, i) => (i % 2 === 0) === (mitad === 'manana'))
       : FUENTES;
-  const resultado = await ejecutarDigest(env, fuentes);
+  const pasada = `${fechaISO(0)}-manual${mitad ? `-${mitad}` : ''}`;
+  const resultado = await ejecutarDigest(env, fuentes, pasada);
   return new Response(JSON.stringify(resultado, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
@@ -95,19 +99,22 @@ async function ejecutarManual(request, env) {
  */
 async function paginaComparar(request, env) {
   if (!autorizado(request, env)) return respuestaNoAutorizado();
+  const inicio = Date.now();
   const n = Math.min(parseInt(new URL(request.url).searchParams.get('n') || '5', 10) || 5, 8);
   const itemsHoy = await leerDia(env, fechaISO(0));
   const itemsAyer = await leerDia(env, fechaISO(-1));
   const items = [...itemsHoy, ...itemsAyer].slice(0, n);
+  const pasada = `${fechaISO(0)}-comparacion`;
+  const contador = crearContadorSubrequests();
 
   const resultados = [];
   for (const item of items) {
-    const textoArticulo = await obtenerTextoArticulo(item.link);
+    const textoArticulo = await obtenerTextoArticulo(item.link, contador);
     const itemParaResumir = { titulo: item.titulo, link: item.link, descripcion: '' };
     const fuenteFicticia = { nombre: item.fuente };
     const [workersAi, haiku] = await Promise.all([
-      resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'workers-ai', textoArticulo }),
-      resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'haiku', textoArticulo }),
+      resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'workers-ai', textoArticulo, contador, pasada }),
+      resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'haiku', textoArticulo, contador, pasada }),
     ]);
     resultados.push({
       titulo: item.titulo,
@@ -117,6 +124,13 @@ async function paginaComparar(request, env) {
       haiku,
     });
   }
+
+  await registrarMetaPasada(env, {
+    pasada,
+    subrequestsTotal: contador.externos,
+    itemsProcesados: items.length,
+    duracionMs: Date.now() - inicio,
+  });
 
   return new Response(JSON.stringify(resultados, null, 2), {
     headers: { 'Content-Type': 'application/json' },
@@ -195,9 +209,12 @@ function fechaISO(offsetDias) {
   return d.toISOString().slice(0, 10);
 }
 
-async function ejecutarDigest(env, fuentes) {
+async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`) {
+  const inicio = Date.now();
   const hoy = fechaISO(0);
   const ayer = fechaISO(-1);
+  const contadorSubrequests = crearContadorSubrequests();
+  let itemsProcesados = 0;
 
   // Dedupe contra lo ya publicado hoy y ayer — 2 lecturas KV para todo el
   // run, en vez de una por pieza (eso es lo que agotaba el límite de
@@ -214,14 +231,14 @@ async function ejecutarDigest(env, fuentes) {
   for (const fuente of fuentes) {
     let items;
     try {
-      items = await obtenerItems(fuente);
+      items = await obtenerItems(fuente, contadorSubrequests);
     } catch (err) {
       console.error(`[radar] fallo obteniendo "${fuente.nombre}": ${err.message}`);
       errores[fuente.nombre] = err.message;
       continue;
     }
 
-    let contador = 0;
+    let publicados = 0;
     let descartados = 0;
     for (const item of items) {
       if (!item.titulo || !item.link) continue;
@@ -229,11 +246,16 @@ async function ejecutarDigest(env, fuentes) {
       if (fuente.tipo === 'github_release' && !esReleaseSignificativo(fuente, item)) continue;
 
       vistos.add(item.link);
+      itemsProcesados++;
       // Haiku, no Workers AI: en la comparación de hoy sus resúmenes fueron
       // sistemáticamente más ricos (fechas, cifras concretas) con el mismo
       // snippet de RSS. Decisión provisional — revisar si compensa el coste
       // a medida que crezca el volumen.
-      const { relevante, resumen } = await resumir(env, item, fuente, { proveedor: 'haiku' });
+      const { relevante, resumen } = await resumir(env, item, fuente, {
+        proveedor: 'haiku',
+        contador: contadorSubrequests,
+        pasada,
+      });
       if (!relevante) {
         descartados++;
         continue;
@@ -245,9 +267,9 @@ async function ejecutarDigest(env, fuentes) {
         fuente: fuente.nombre,
         fecha: item.fecha || new Date().toISOString(),
       });
-      contador++;
+      publicados++;
     }
-    porFuente[fuente.nombre] = descartados > 0 ? `${contador} (+${descartados} descartadas)` : contador;
+    porFuente[fuente.nombre] = descartados > 0 ? `${publicados} (+${descartados} descartadas)` : publicados;
   }
 
   if (nuevos.length > 0) {
@@ -255,8 +277,15 @@ async function ejecutarDigest(env, fuentes) {
     await env.RADAR_KV.put(claveDia, JSON.stringify([...existentesHoy, ...nuevos]), { expirationTtl: TTL_DIA });
   }
 
+  await registrarMetaPasada(env, {
+    pasada,
+    subrequestsTotal: contadorSubrequests.externos,
+    itemsProcesados,
+    duracionMs: Date.now() - inicio,
+  });
+
   const fuentesConError = Object.keys(errores).length;
-  const resumenLinea = `[radar] pasada ${hoy}: ${nuevos.length} nuevas, ${fuentesConError}/${fuentes.length} fuentes con error`;
+  const resumenLinea = `[radar] pasada ${hoy}: ${nuevos.length} nuevas, ${fuentesConError}/${fuentes.length} fuentes con error, ${contadorSubrequests.externos} subrequests externos`;
   if (fuentesConError === fuentes.length && fuentes.length > 0) {
     // Fallo total: todas las fuentes de esta pasada fallaron. Sin canal de
     // alertas activo por ahora — esto queda como la señal a buscar con
@@ -266,5 +295,5 @@ async function ejecutarDigest(env, fuentes) {
     console.log(resumenLinea);
   }
 
-  return { fecha: hoy, totalNuevos: nuevos.length, porFuente, errores };
+  return { fecha: hoy, totalNuevos: nuevos.length, porFuente, errores, subrequestsExternos: contadorSubrequests.externos };
 }

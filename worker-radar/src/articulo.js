@@ -1,3 +1,5 @@
+import { fetchContado } from './costes.js';
+
 /**
  * Extracción de texto de artículo completo, para cuando el snippet del RSS
  * se queda corto para un resumen de calidad. Sin DOM parser (el runtime de
@@ -16,9 +18,9 @@
 const LONGITUD_MAXIMA = 8000; // ~2000 tokens, suficiente para un resumen de calidad
 const LONGITUD_MINIMA_PARRAFO = 40; // por debajo de esto, suele ser nav/menú, no contenido
 
-export async function obtenerTextoArticulo(url) {
+export async function obtenerTextoArticulo(url, contador = null) {
   try {
-    const res = await fetch(url, {
+    const res = await fetchContado(contador, url, {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (compatible; espacio-latente-radar/1.0; +https://espacio-latente.com)',

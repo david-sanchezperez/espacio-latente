@@ -12,6 +12,14 @@ crons = ["0 7 * * *", "0 19 * * *"]
 binding = "RADAR_KV"
 id = "8f48f4a99284495b9999fd85390a9ddc"
 
+# Contabilidad de llamadas LLM (fase 1 de v0.2 — ver DEVLOG.md). Creación:
+#   npx wrangler d1 create radar-costes   (una vez; copia el database_id de abajo)
+#   npx wrangler d1 execute radar-costes --file=schema.sql --remote
+[[d1_databases]]
+binding = "RADAR_DB"
+database_name = "radar-costes"
+database_id = "34c06153-9fe2-4f07-acb8-bafb0889749f"
+
 [ai]
 binding = "AI"
 
