@@ -414,6 +414,59 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .flow-mid { width: auto; }
 }
 
+/* --- Demo interactiva de umbrales de similitud (radar, memoria semántica) --- */
+.umbral-demo {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 1.5rem;
+  font-family: var(--f-mono);
+}
+.umbral-demo-escala { position: relative; padding-top: 1.7rem; margin-bottom: 0.9rem; }
+.umbral-demo-barra {
+  position: absolute; top: 2.15rem; left: 0; right: 0; height: 6px; border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--grafito) 0%, var(--grafito) 65%,
+    #4a3520 65%, #4a3520 93%,
+    var(--ambar) 93%, var(--ambar) 100%
+  );
+  border: 1px solid var(--borde);
+}
+.umbral-demo-tick {
+  position: absolute; top: 0; transform: translateX(-50%);
+  font-size: 0.66rem; color: var(--acero); text-align: center; white-space: nowrap; line-height: 1.3;
+}
+.umbral-demo-tick small { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.umbral-demo-slider {
+  position: relative; z-index: 1; display: block; width: 100%;
+  margin: 1.85rem 0 0; height: 1.2rem;
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+}
+.umbral-demo-slider::-webkit-slider-runnable-track { background: transparent; height: 6px; }
+.umbral-demo-slider::-moz-range-track { background: transparent; height: 6px; }
+.umbral-demo-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; margin-top: -4px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--hueso); border: 2px solid var(--ambar);
+  box-shadow: 0 0 6px rgba(255, 180, 84, 0.6);
+}
+.umbral-demo-slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ambar);
+  background: var(--hueso); box-shadow: 0 0 6px rgba(255, 180, 84, 0.6);
+}
+.umbral-demo-valor { font-size: 0.92rem; color: var(--acero); }
+.umbral-demo-valor code { color: var(--hueso); }
+.umbral-demo-caption {
+  margin-top: 0.35rem; font-size: 0.85rem; color: var(--acero); transition: color 0.15s ease;
+}
+.umbral-demo-caption.is-relacionado, .umbral-demo-caption.is-duplicado { color: var(--ambar); }
+.umbral-demo-presets { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; }
+.umbral-demo-presets button {
+  font-family: var(--f-mono); font-size: 0.78rem; color: var(--hueso);
+  background: var(--grafito); border: 1px solid var(--borde);
+  border-radius: 3px; padding: 0.4rem 0.8rem; cursor: pointer;
+}
+.umbral-demo-presets button:hover { border-color: var(--ambar); color: var(--ambar); }
+
 /* --- Buzón --- */
 .buzon { padding: 0 0 5rem; }
 .buzon form { display: grid; gap: 0.9rem; max-width: 540px; }

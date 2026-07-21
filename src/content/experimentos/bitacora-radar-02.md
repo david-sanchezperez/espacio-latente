@@ -11,6 +11,64 @@ El [episodio anterior](/lab/bitacora-radar-01) terminaba con una promesa: el rad
 
 La idea central es sencilla, así que la dejo por delante antes de entrar en cómo se construyó: cada noticia nueva se compara con lo ya publicado, y solo puede pasar una de tres cosas. Es la misma noticia contada por otro medio → se fusiona, no se cuenta dos veces. Está relacionada con algo publicado hace semanas → se menciona esa relación como contexto. No se parece a nada → se publica como siempre. Lo que sigue es cómo se llegó a eso y qué se torció por el camino.
 
+Pruébalo tú: mueve el marcador y comprueba a partir de qué punto una noticia deja de ser "nueva", con los dos umbrales reales que usa el radar hoy mismo.
+
+<div class="umbral-demo" id="umbral-demo">
+  <div class="umbral-demo-escala">
+    <div class="umbral-demo-barra"></div>
+    <span class="umbral-demo-tick" style="left:65%">0.65<small>relacionado</small></span>
+    <span class="umbral-demo-tick" style="left:93%">0.93<small>duplicado</small></span>
+    <input type="range" min="0" max="100" value="50" step="1" class="umbral-demo-slider" id="umbral-demo-slider" aria-label="Similitud coseno entre dos noticias" />
+  </div>
+  <div class="umbral-demo-valor">Similitud: <code id="umbral-demo-valor">0.50</code></div>
+  <div class="umbral-demo-caption" id="umbral-demo-caption" aria-live="polite">nuevo — se resume y publica como siempre</div>
+  <div class="umbral-demo-presets">
+    <button type="button" data-valor="73">Caso real: 0.731 — dos piezas sobre modelos chinos</button>
+    <button type="button" data-valor="58">Ruido: 0.575 — un paper de XAI vs una app de cámara</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById('umbral-demo');
+  if (!root) return;
+  const slider = root.querySelector('#umbral-demo-slider');
+  const valorEl = root.querySelector('#umbral-demo-valor');
+  const captionEl = root.querySelector('#umbral-demo-caption');
+
+  const UMBRAL_RELACIONADO = 65;
+  const UMBRAL_DUPLICADO = 93;
+
+  function clasificar(v) {
+    if (v >= UMBRAL_DUPLICADO) {
+      return { tipo: 'duplicado', texto: 'duplicado — se fusiona con la pieza ya publicada, no se resume de nuevo' };
+    }
+    if (v >= UMBRAL_RELACIONADO) {
+      return { tipo: 'relacionado', texto: 'relacionado — se pasa como contexto al resumen, sin fusionar' };
+    }
+    return { tipo: 'nuevo', texto: 'nuevo — se resume y publica como siempre' };
+  }
+
+  function render() {
+    const v = parseInt(slider.value, 10);
+    const { tipo, texto } = clasificar(v);
+    valorEl.textContent = (v / 100).toFixed(2);
+    captionEl.textContent = texto;
+    captionEl.className = 'umbral-demo-caption is-' + tipo;
+  }
+
+  slider.addEventListener('input', render);
+  root.querySelectorAll('.umbral-demo-presets button').forEach((boton) => {
+    boton.addEventListener('click', () => {
+      slider.value = boton.dataset.valor;
+      render();
+    });
+  });
+
+  render();
+})();
+</script>
+
 ## Comparar por significado, no por enlace
 
 Hasta ahora, "ya publicado" quería decir "mismo enlace exacto". Funciona bien contra republicaciones, pero no contra el caso más habitual: un lanzamiento grande lo cuentan tres o cuatro medios el mismo día, cada uno con su titular y su URL. Para el radar, eso eran tres noticias distintas — para el lector, la misma historia tres veces.
