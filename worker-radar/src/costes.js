@@ -63,6 +63,29 @@ export async function registrarLlamada(env, fila) {
   return costeUsd;
 }
 
+/**
+ * Fila de decisión de memoria semántica (fase 2 de v0.2 — ver DEVLOG.md),
+ * mismo D1, proposito: 'dedup_semantica'. Una fila por item nuevo evaluado
+ * contra Vectorize, tenga o no vecino: es la base para revisar si
+ * `MEMORIA.UMBRAL_DUPLICADO`/`UMBRAL_RELACIONADO` (config.js) están bien
+ * calibrados, igual que fase 1 se apoyó en `meta_pasada` para el límite de
+ * subrequests.
+ */
+export async function registrarDedup(env, { pasada, itemLink, clasificacion, similitudTop, vecinoLink }) {
+  try {
+    await env.RADAR_DB.prepare(
+      `INSERT INTO radar_llamadas_llm
+        (pasada, timestamp, modelo, proposito, tokens_in, tokens_out, coste_usd, item_link, fuente, resultado,
+         clasificacion, similitud_top, vecino_link)
+       VALUES (?, ?, NULL, 'dedup_semantica', 0, 0, 0, ?, NULL, 'ok', ?, ?, ?)`
+    )
+      .bind(pasada, new Date().toISOString(), itemLink, clasificacion, similitudTop ?? null, vecinoLink ?? null)
+      .run();
+  } catch (err) {
+    console.error(`[radar] fallo escribiendo dedup_semantica en D1: ${err.message}`);
+  }
+}
+
 /** Fila de resumen al cierre de una pasada — mismo D1, proposito: 'meta_pasada'. */
 export async function registrarMetaPasada(env, { pasada, subrequestsTotal, itemsProcesados, duracionMs }) {
   try {

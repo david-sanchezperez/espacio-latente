@@ -27,7 +27,11 @@ const SISTEMA_RESUMEN =
   'eso puntúa bajo aunque tenga sustancia. 1-2 = no trata de IA de forma central, o es genérico/lifestyle/listas ' +
   'de productos, o menciona IA solo de pasada; 3 = relacionado con IA pero menor o tangencial; 4-5 = noticia ' +
   'claramente centrada en IA/ML con sustancia real (lanzamiento, paper, producto, análisis técnico de un modelo ' +
-  'o sistema de IA).';
+  'o sistema de IA).\n\n' +
+  'Si el mensaje incluye un bloque "CONTEXTO PROPIO" al final, es dato de nuestro propio archivo ya publicado ' +
+  '(fuente de confianza, no contenido de terceros): si la noticia de hoy es realmente una continuación o está ' +
+  'relacionada, menciónalo en una frase dentro del RESUMEN; si no aporta nada real, ignora el bloque sin más. ' +
+  'NUNCA incluyas URLs ni enlaces en tu respuesta — el enlace al artículo de contexto lo añadimos nosotros aparte.';
 
 /**
  * Evalúa relevancia y resume una pieza en una sola llamada (mismo coste de
@@ -47,9 +51,12 @@ const SISTEMA_RESUMEN =
  * pieza real por un fallo técnico.
  */
 export async function resumir(env, item, fuente, opciones = {}) {
-  const { proveedor = 'workers-ai', textoArticulo, contador = null, pasada = 'sin-pasada' } = opciones;
+  const { proveedor = 'workers-ai', textoArticulo, contador = null, pasada = 'sin-pasada', contexto = null } = opciones;
   const cuerpo = (textoArticulo || item.descripcion || '').slice(0, LONGITUD_MAXIMA_CONTENIDO);
-  const contenidoUsuario = `Fuente: ${fuente.nombre}\n\n${item.titulo}\n\n${cuerpo}`;
+  let contenidoUsuario = `Fuente: ${fuente.nombre}\n\n${item.titulo}\n\n${cuerpo}`;
+  if (contexto) {
+    contenidoUsuario += `\n\n---\nCONTEXTO PROPIO: hace unos días publicamos "${contexto.titulo}". Úsalo solo si aplica la regla del sistema.`;
+  }
   const modelo = proveedor === 'haiku' ? MODELO_HAIKU : MODELO_WORKERS_AI;
 
   try {
@@ -73,10 +80,10 @@ export async function resumir(env, item, fuente, opciones = {}) {
     if (match) {
       const relevancia = parseInt(match[1], 10);
       const resumen = desescapar(match[2].trim());
-      return { relevante: relevancia >= RESUMEN.UMBRAL_RELEVANCIA, resumen: resumen || item.titulo };
+      return { relevante: relevancia >= RESUMEN.UMBRAL_RELEVANCIA, resumen: resumen || item.titulo, contexto };
     }
     // El modelo no siguió el formato: mejor incluirlo con lo que haya que perderlo.
-    return { relevante: true, resumen: desescapar(texto) || item.titulo };
+    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto };
   } catch (err) {
     // Si falla la llamada, mejor publicar con el titular que perder la pieza —
     // pero deja rastro en los logs para poder depurarlo (`wrangler tail`).
@@ -96,8 +103,12 @@ export async function resumir(env, item, fuente, opciones = {}) {
 }
 
 async function llamarWorkersAI(env, contenidoUsuario) {
-  // Llamada a un binding nativo (no cuenta contra el límite de 50 subrequests
-  // externos del plan free) — no pasa por fetchContado.
+  // Llamada a un binding nativo — no pasa por fetchContado. OJO: fase 2 (ver
+  // memoria.js) verificó en producción que env.AI.run() SÍ cuenta contra el
+  // límite de 50 subrequests/invocación, contra lo que se asumía en fase 1.
+  // Esta ruta solo se ejerce vía /comparar (producción usa Haiku), así que
+  // no es crítico aquí, pero no des por hecho que este binding es gratis en
+  // subrequests si algún día pasa a ser parte del camino de producción.
   //
   // TODO fase 1 (verificar en producción, no reproducible en local): el
   // nombre exacto de las claves de `respuesta.usage` para este modelo no

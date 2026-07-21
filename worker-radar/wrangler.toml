@@ -38,6 +38,14 @@ max_batch_size = 1
 max_concurrency = 1
 max_retries = 3
 
+# Fase 2 de v0.2 (ver DEVLOG.md): memoria semántica. Un único índice sirve
+# dos propósitos — dedup del mismo día (fusionar cobertura repetida de una
+# noticia) y contexto histórico (enlazar con lo publicado semanas atrás) —
+# porque comparten embedding y consulta, solo cambia el umbral de similitud.
+[[vectorize]]
+binding = "RADAR_VECTORIZE"
+index_name = "radar-memoria"
+
 [[routes]]
 pattern = "radar.espacio-latente.com"
 custom_domain = true

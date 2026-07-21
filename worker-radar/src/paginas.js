@@ -35,6 +35,7 @@ const ESTILO = `
   .pieza h3 a { color: var(--hueso); }
   .pieza h3 a:hover { color: var(--ambar); }
   .pieza p { color: var(--acero); font-size: 0.92rem; }
+  .pieza .contexto { font-size: 0.82rem; font-style: italic; margin-top: 0.5rem; }
   .vacio { color: var(--acero); font-style: italic; padding: 1rem 0; }
   footer { border-top: 1px solid var(--borde); padding: 2rem 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.8rem; color: var(--acero); }
   .archivo-lista { list-style: none; }
@@ -72,10 +73,15 @@ function envoltorio(titulo, cuerpo) {
 }
 
 function renderPieza(item) {
+  const fuentes = [item.fuente, ...(item.fuentesAdicionales || [])].join(' · ');
+  const contexto = item.contexto
+    ? `<p class="contexto">↳ Contexto: <a href="${escapar(item.contexto.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.contexto.titulo)}</a></p>`
+    : '';
   return `<article class="pieza">
-    <span class="fuente">${escapar(item.fuente)}</span>
+    <span class="fuente">${escapar(fuentes)}</span>
     <h3><a href="${escapar(item.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.titulo)}</a></h3>
     <p>${escapar(item.resumen)}</p>
+    ${contexto}
   </article>`;
 }
 
@@ -122,8 +128,8 @@ export function renderFeedAtom({ origen, items }) {
     <link href="${escaparXml(item.link)}" />
     <id>${escaparXml(item.link)}</id>
     <updated>${new Date(item.fecha || Date.now()).toISOString()}</updated>
-    <author><name>${escaparXml(item.fuente)}</name></author>
-    <summary>${escaparXml(item.resumen)}</summary>
+    <author><name>${escaparXml([item.fuente, ...(item.fuentesAdicionales || [])].join(' · '))}</name></author>
+    <summary>${escaparXml(item.resumen)}${item.contexto ? ` (Contexto: ${escaparXml(item.contexto.titulo)} — ${escaparXml(item.contexto.link)})` : ''}</summary>
   </entry>`
     )
     .join('\n');

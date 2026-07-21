@@ -24,8 +24,9 @@ import { obtenerItems } from './feed.js';
 import { resumir, esReleaseSignificativo } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom } from './paginas.js';
-import { ARCHIVO, COLA } from './config.js';
-import { crearContadorSubrequests, registrarMetaPasada } from './costes.js';
+import { ARCHIVO, COLA, MEMORIA } from './config.js';
+import { crearContadorSubrequests, registrarMetaPasada, registrarDedup } from './costes.js';
+import { generarEmbedding, buscarVecinos, guardarVector, clasificarVecinos } from './memoria.js';
 
 const TTL_DIA = ARCHIVO.TTL_DIA_SEGUNDOS;
 
@@ -248,6 +249,16 @@ async function leerDia(env, fecha) {
   return raw ? JSON.parse(raw) : [];
 }
 
+/**
+ * Busca, por link, el item ya presente en esta pasada (hoy) al que fusionar
+ * una cobertura duplicada. Solo mira `existentesHoy` (ya en KV) y `nuevos`
+ * (recién resumidos en esta misma pasada) — nunca días anteriores, cuya
+ * página ya se sirvió y no es segura de mutar retroactivamente.
+ */
+function buscarObjetivoFusion(link, existentesHoy, nuevos) {
+  return nuevos.find((it) => it.link === link) || existentesHoy.find((it) => it.link === link);
+}
+
 function fechaISO(offsetDias) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offsetDias);
@@ -285,6 +296,7 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
 
     let publicados = 0;
     let descartados = 0;
+    let fusionados = 0;
     for (const item of items) {
       if (!item.titulo || !item.link) continue;
       if (vistos.has(item.link)) continue;
@@ -292,29 +304,85 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
 
       vistos.add(item.link);
       itemsProcesados++;
+
+      // Fase 2 (memoria semántica, ver DEVLOG.md): antes de gastar una
+      // llamada a Haiku, miramos si esto ya es una noticia que tenemos hoy
+      // desde otra fuente (fusionar) o si hay cobertura pasada relacionada
+      // (contexto para el resumen). Best-effort: si el embedding falla,
+      // `vecinos` queda vacío y el item sigue el camino normal de siempre.
+      //
+      // env.AI.run()/Vectorize SÍ cuentan contra el límite de 50 subrequests
+      // (verificado en producción, ver memoria.js) — por debajo del
+      // presupuesto se intenta; por encima, se salta fase 2 para no dejar
+      // sin margen a Haiku, que es lo que de verdad no puede fallar.
+      let tipo = 'nuevo';
+      let vecino = null;
+      let embedding = null;
+      if (contadorSubrequests.externos < MEMORIA.PRESUPUESTO_SUBREQUESTS_MAX) {
+        const textoEmbedding = `${item.titulo}\n${(item.descripcion || '').slice(0, 500)}`;
+        embedding = await generarEmbedding(env, textoEmbedding, contadorSubrequests);
+        const vecinos = embedding ? await buscarVecinos(env, embedding, MEMORIA.TOP_K, contadorSubrequests) : [];
+        ({ tipo, vecino } = clasificarVecinos(vecinos, hoy));
+        await registrarDedup(env, {
+          pasada,
+          itemLink: item.link,
+          clasificacion: tipo,
+          similitudTop: vecino?.score,
+          vecinoLink: vecino?.link,
+        });
+      } else {
+        await registrarDedup(env, { pasada, itemLink: item.link, clasificacion: 'sin_presupuesto' });
+      }
+
+      if (tipo === 'duplicado') {
+        const objetivo = buscarObjetivoFusion(vecino.link, existentesHoy, nuevos);
+        if (objetivo) {
+          objetivo.fuentesAdicionales = objetivo.fuentesAdicionales || [];
+          if (!objetivo.fuentesAdicionales.includes(fuente.nombre)) objetivo.fuentesAdicionales.push(fuente.nombre);
+          fusionados++;
+        } else {
+          // Duplicado de una pieza fuera de la ventana de hoy (ej. de ayer):
+          // no hay nada que mutar de forma segura (esa página ya está
+          // servida), así que simplemente no se republica.
+          descartados++;
+        }
+        continue;
+      }
+
       // Haiku, no Workers AI: en la comparación de hoy sus resúmenes fueron
       // sistemáticamente más ricos (fechas, cifras concretas) con el mismo
       // snippet de RSS. Decisión provisional — revisar si compensa el coste
       // a medida que crezca el volumen.
-      const { relevante, resumen } = await resumir(env, item, fuente, {
+      const { relevante, resumen, contexto } = await resumir(env, item, fuente, {
         proveedor: 'haiku',
         contador: contadorSubrequests,
         pasada,
+        contexto: tipo === 'relacionado' ? vecino : null,
       });
       if (!relevante) {
         descartados++;
         continue;
       }
-      nuevos.push({
+      const nuevo = {
         titulo: item.titulo,
         resumen,
         link: item.link,
         fuente: fuente.nombre,
         fecha: item.fecha || new Date().toISOString(),
-      });
+      };
+      if (contexto) nuevo.contexto = { titulo: contexto.titulo, link: contexto.link };
+      nuevos.push(nuevo);
       publicados++;
+
+      // Solo se guarda vector de lo que realmente se publica — así los
+      // vecinos futuros son siempre piezas reales del digest, nunca ruido
+      // descartado por baja relevancia.
+      if (embedding) await guardarVector(env, { link: item.link, titulo: item.titulo, fecha: nuevo.fecha }, embedding, contadorSubrequests);
     }
-    porFuente[fuente.nombre] = descartados > 0 ? `${publicados} (+${descartados} descartadas)` : publicados;
+    porFuente[fuente.nombre] =
+      descartados > 0 || fusionados > 0
+        ? `${publicados} (+${descartados} descartadas${fusionados > 0 ? `, +${fusionados} fusionadas` : ''})`
+        : publicados;
   }
 
   if (nuevos.length > 0) {
