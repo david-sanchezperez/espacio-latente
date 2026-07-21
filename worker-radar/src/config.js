@@ -51,7 +51,14 @@ export const MEMORIA = {
   UMBRAL_DUPLICADO: 0.93,
   // >= esto (y < UMBRAL_DUPLICADO): cobertura pasada relacionada → se pasa
   // como contexto a Haiku para enriquecer el resumen, sin fusionar.
-  UMBRAL_RELACIONADO: 0.80,
+  // Calibrado con datos reales (2026-07-21, ver DEVLOG.md), no a ojo: el
+  // único par genuinamente relacionado observado hasta ahora ("Chinese AI
+  // models: another Sputnik moment" vs "...Moonshot Kimi K3, Alibaba Qwen",
+  // ambos de The Verge) marcó 0.731 — por debajo del 0.80 original, que
+  // nunca lo habría detectado. El ruido (pares sin relación real, ej. un
+  // paper de XAI vs una app de cámara) se quedó en 0.44-0.591. Bajado a
+  // 0.65 para dejar margen a ambos lados de esa separación.
+  UMBRAL_RELACIONADO: 0.65,
   // Ventana de retención del índice — más allá de esto ya no aporta como
   // contexto "reciente" (ver hipótesis de fase 4 en el DEVLOG: a ~30
   // items/día caben con margen en el free tier de Vectorize).

@@ -249,6 +249,34 @@ correctamente ahora que el índice tiene contenido, y revisar
 `UMBRAL_DUPLICADO`/`UMBRAL_RELACIONADO` con datos reales en vez de la
 estimación inicial.
 
+## Fase 2 — calibración de UMBRAL_RELACIONADO con datos reales (2026-07-21)
+
+Con el índice ya poblado (backfill de 69 items), una pasada real
+(`/ejecutar` sin `mitad`) generó 11 comparaciones nuevas contra ese
+histórico — la primera vez con datos suficientes para juzgar los umbrales
+contra casos reales, no estimados a ojo.
+
+**Pares observados** (similitud coseno, `dedup_semantica` en D1):
+- 0.731 — Verge "Chinese AI models: another Sputnik moment" vs Verge
+  "...Moonshot Kimi K3, Alibaba Qwen": **relacionados de verdad** (mismo
+  tema — modelos chinos open source), pieza distinta.
+- 0.591 — MIT Tech Review sobre lo mismo (China/modelos IA) vs el mismo
+  vecino de arriba: probablemente también relacionado.
+- 0.44–0.575 — seis pares más, todos entre temas sin relación real (ej.
+  verificado a mano: un paper de arXiv sobre XAI/inpainting
+  ["Inpainting Insights..."] vs un artículo de Verge sobre la app de
+  cámara Adobe Indigo — cero relación, puro ruido de vocabulario
+  compartido de "IA").
+
+**Conclusión**: con `UMBRAL_RELACIONADO = 0.80`, el único par realmente
+relacionado (0.731) nunca se habría detectado — el umbral original era
+demasiado alto para lo que `bge-m3` produce comparando título+snippet
+corto. El ruido se queda claramente por debajo de 0.6. Bajado a **0.65**:
+deja fuera el ruido observado (máx. 0.591) y habría capturado el caso real
+con margen. `UMBRAL_DUPLICADO` (0.93) sigue sin un solo par real que lo
+ejercite — hace falta una pasada donde la misma noticia exacta aparezca
+por dos fuentes a la vez (probable con una noticia grande) antes de tocarlo.
+
 **Decisión sobre el margen restante del límite de 50**: `PRESUPUESTO_SUBREQUESTS_MAX
 = 30` no es una garantía matemática absoluta — Haiku nunca se salta, así que
 un lote con dos fuentes distintas volcando de golpe sus ~20 items por
