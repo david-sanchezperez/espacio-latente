@@ -248,3 +248,18 @@ correctamente ahora que el índice tiene contenido, y revisar
 `similitud_top`/`clasificacion` en D1 tras unos días para calibrar
 `UMBRAL_DUPLICADO`/`UMBRAL_RELACIONADO` con datos reales en vez de la
 estimación inicial.
+
+**Decisión sobre el margen restante del límite de 50**: `PRESUPUESTO_SUBREQUESTS_MAX
+= 30` no es una garantía matemática absoluta — Haiku nunca se salta, así que
+un lote con dos fuentes distintas volcando de golpe sus ~20 items por
+defecto (`feed.js`), todos nunca vistos, seguiría pudiendo superar 50 (ya
+era un riesgo latente en el diseño de fase 1, con o sin embeddings, no
+introducido por fase 2). Opciones evaluadas: (1) tope duro de items por
+invocación, re-encolando el resto — solución limpia y gratis, pero no
+implementada aún; (2) Workers Paid ($5/mes, sube el límite a 1000) — ya
+descartado en fase 1 por la misma razón de entonces. Decisión: no tocar
+nada más ahora — el patrón real observado (4-8 subrequests/lote) está lejos
+del límite, y el escenario de riesgo (dos fuentes cargadas coincidiendo en
+el mismo lote) es hipotético. Monitorizar `subrequests_total` en
+`meta_pasada` (D1) y revisar con datos reales si el margen empieza a
+estrecharse, en vez de resolver un problema que hoy no existe.
