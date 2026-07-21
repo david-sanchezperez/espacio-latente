@@ -27,15 +27,26 @@ const ESTILO = `
     border-top: none; padding: 1.1rem 1.25rem;
   }
   .pieza:first-of-type { border-top: 1px solid var(--borde); }
+  .cabecera-pieza { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
   .pieza .fuente {
     font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.72rem;
     text-transform: uppercase; letter-spacing: 0.06em; color: var(--ambar);
   }
+  .pieza .estrellas { font-size: 0.8rem; color: var(--ambar); letter-spacing: 0.05em; white-space: nowrap; }
   .pieza h3 { font-size: 1.05rem; font-weight: 600; margin: 0.3rem 0 0.4rem; }
   .pieza h3 a { color: var(--hueso); }
   .pieza h3 a:hover { color: var(--ambar); }
   .pieza p { color: var(--acero); font-size: 0.92rem; }
   .pieza .contexto { font-size: 0.82rem; font-style: italic; margin-top: 0.5rem; }
+  .panorama {
+    background: var(--panel-alt); border: 1px solid var(--borde); border-left: 3px solid var(--ambar);
+    padding: 1.1rem 1.25rem; margin-bottom: 2.5rem;
+  }
+  .panorama h2 {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--ambar); margin-bottom: 0.5rem;
+  }
+  .panorama p { font-size: 0.98rem; }
   .vacio { color: var(--acero); font-style: italic; padding: 1rem 0; }
   footer { border-top: 1px solid var(--borde); padding: 2rem 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.8rem; color: var(--acero); }
   .archivo-lista { list-style: none; }
@@ -72,13 +83,25 @@ function envoltorio(titulo, cuerpo) {
 </html>`;
 }
 
+/** Piezas de antes de este cambio no tienen `relevancia` guardada — sin estrellas, no error. */
+function renderEstrellas(relevancia) {
+  if (!Number.isInteger(relevancia) || relevancia < 1 || relevancia > 5) return '';
+  const llenas = '★'.repeat(relevancia);
+  const vacias = '☆'.repeat(5 - relevancia);
+  return `<span class="estrellas" title="Relevancia: ${relevancia}/5">${llenas}${vacias}</span>`;
+}
+
 function renderPieza(item) {
   const fuentes = [item.fuente, ...(item.fuentesAdicionales || [])].join(' · ');
+  const estrellas = renderEstrellas(item.relevancia);
   const contexto = item.contexto
     ? `<p class="contexto">↳ Contexto: <a href="${escapar(item.contexto.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.contexto.titulo)}</a></p>`
     : '';
   return `<article class="pieza">
-    <span class="fuente">${escapar(fuentes)}</span>
+    <div class="cabecera-pieza">
+      <span class="fuente">${escapar(fuentes)}</span>
+      ${estrellas}
+    </div>
     <h3><a href="${escapar(item.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.titulo)}</a></h3>
     <p>${escapar(item.resumen)}</p>
     ${contexto}
@@ -92,10 +115,14 @@ function renderSeccion(titulo, items) {
   return `<section class="seccion"><h2>${escapar(titulo)}</h2>${cuerpo}</section>`;
 }
 
-export function renderDigest({ hoy, ayer, itemsHoy, itemsAyer, soloUnDia }) {
-  const cuerpo = soloUnDia
-    ? renderSeccion(hoy, itemsHoy)
-    : renderSeccion(`Hoy · ${hoy}`, itemsHoy) + renderSeccion(`Ayer · ${ayer}`, itemsAyer);
+export function renderDigest({ hoy, ayer, itemsHoy, itemsAyer, soloUnDia, panoramaHoy }) {
+  const panorama = panoramaHoy
+    ? `<section class="panorama"><h2>Panorama de hoy</h2><p>${escapar(panoramaHoy)}</p></section>`
+    : '';
+  const cuerpo =
+    panorama + (soloUnDia
+      ? renderSeccion(hoy, itemsHoy)
+      : renderSeccion(`Hoy · ${hoy}`, itemsHoy) + renderSeccion(`Ayer · ${ayer}`, itemsAyer));
   return envoltorio(soloUnDia ? hoy : 'Hoy', cuerpo);
 }
 

@@ -291,3 +291,39 @@ del límite, y el escenario de riesgo (dos fuentes cargadas coincidiendo en
 el mismo lote) es hipotético. Monitorizar `subrequests_total` en
 `meta_pasada` (D1) y revisar con datos reales si el margen empieza a
 estrecharse, en vez de resolver un problema que hoy no existe.
+
+## UX — panorama diario y score de relevancia visible (2026-07-21)
+
+**Motivación**: el digest era muy unitario (una pieza tras otra, sin vista
+de conjunto), y la `RELEVANCIA` (1-5) que ya calcula cada llamada a Haiku se
+descartaba tras aplicar el umbral booleano — dato ya pagado, tirado.
+
+**Qué se implementó**:
+- `resumir()` (`resumen.js`) ahora devuelve también `relevancia` (el número
+  1-5 real, no solo el booleano derivado). `index.js` lo guarda en cada
+  item nuevo (`item.relevancia`).
+- `generarPanorama()` (`resumen.js`, nueva): una llamada más a Haiku, no por
+  pieza sino de síntesis sobre todo lo publicado hoy hasta el momento —
+  título+resumen de cada item, 2-4 frases conectando lo más relevante del
+  día. Se recalcula en `ejecutarDigest` cada vez que hay piezas nuevas
+  (`nuevos.length > 0`), y se guarda aparte en KV (`radar:panorama:${hoy}`,
+  mismo TTL que los items). Best-effort: si falla, el digest se sirve igual
+  sin panorama.
+- `paginas.js`: `renderEstrellas()` (★★★★☆, vacío si `relevancia` no está
+  guardada — piezas de antes de este cambio no rompen nada) junto a la
+  fuente de cada pieza; sección `.panorama` (borde ámbar) sobre el listado
+  del día, solo si hay panorama guardado para esa fecha.
+- Coste: +1 llamada a Haiku por lote con items nuevos (no por página vista
+  — evita gastar en cada visita al digest). Marginal al volumen actual.
+
+**Regla de estilo añadida a los prompts** (`SISTEMA_RESUMEN` y
+`SISTEMA_PANORAMA`): escribir en español pero mantener en inglés los
+términos técnicos ya extendidos en la comunidad de IA/ML (fine-tuning,
+embeddings, prompt, dataset, benchmark...) en vez de forzar calcos
+("ajuste fino", "incrustaciones") — decisión del propio proyecto, más
+estándar en escritura técnica en español para audiencia técnica.
+
+**Verificado antes de desplegar**: preview local con `wrangler dev` (KV
+local, datos de ejemplo) para ver panorama + estrellas renderizados de
+verdad antes de tocar producción — mismo criterio que toda esta fase 2,
+nunca desplegar sin verificar el resultado real primero.

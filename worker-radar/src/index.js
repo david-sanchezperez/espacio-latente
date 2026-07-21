@@ -21,7 +21,7 @@
  */
 import { FUENTES } from './sources.js';
 import { obtenerItems } from './feed.js';
-import { resumir, esReleaseSignificativo } from './resumen.js';
+import { resumir, esReleaseSignificativo, generarPanorama } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom } from './paginas.js';
 import { ARCHIVO, COLA, MEMORIA } from './config.js';
@@ -211,16 +211,19 @@ async function paginaHoy(env) {
   const ayer = fechaISO(-1);
   const itemsHoy = await leerDia(env, hoy);
   const itemsAyer = await leerDia(env, ayer);
-  return new Response(renderDigest({ hoy, ayer, itemsHoy, itemsAyer }), {
+  const panoramaHoy = await env.RADAR_KV.get(`radar:panorama:${hoy}`);
+  return new Response(renderDigest({ hoy, ayer, itemsHoy, itemsAyer, panoramaHoy }), {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
 }
 
 async function paginaDia(env, fecha) {
   const items = await leerDia(env, fecha);
-  return new Response(renderDigest({ hoy: fecha, ayer: null, itemsHoy: items, itemsAyer: [], soloUnDia: true }), {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  });
+  const panoramaHoy = await env.RADAR_KV.get(`radar:panorama:${fecha}`);
+  return new Response(
+    renderDigest({ hoy: fecha, ayer: null, itemsHoy: items, itemsAyer: [], soloUnDia: true, panoramaHoy }),
+    { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
 }
 
 async function paginaFeed(env, origen) {
@@ -353,7 +356,7 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
       // sistemáticamente más ricos (fechas, cifras concretas) con el mismo
       // snippet de RSS. Decisión provisional — revisar si compensa el coste
       // a medida que crezca el volumen.
-      const { relevante, resumen, contexto } = await resumir(env, item, fuente, {
+      const { relevante, resumen, contexto, relevancia } = await resumir(env, item, fuente, {
         proveedor: 'haiku',
         contador: contadorSubrequests,
         pasada,
@@ -369,6 +372,7 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
         link: item.link,
         fuente: fuente.nombre,
         fecha: item.fecha || new Date().toISOString(),
+        relevancia: relevancia ?? null,
       };
       if (contexto) nuevo.contexto = { titulo: contexto.titulo, link: contexto.link };
       nuevos.push(nuevo);
@@ -387,7 +391,16 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
 
   if (nuevos.length > 0) {
     const claveDia = `radar:items:${hoy}`;
-    await env.RADAR_KV.put(claveDia, JSON.stringify([...existentesHoy, ...nuevos]), { expirationTtl: TTL_DIA });
+    const todosHoy = [...existentesHoy, ...nuevos];
+    await env.RADAR_KV.put(claveDia, JSON.stringify(todosHoy), { expirationTtl: TTL_DIA });
+
+    // Panorama del día: se recalcula sobre el acumulado cada vez que hay
+    // piezas nuevas, así que refleja "lo publicado hasta ahora", no un cierre
+    // de día fijo. Best-effort — si falla, el digest se sirve igual sin él.
+    const panorama = await generarPanorama(env, todosHoy, { contador: contadorSubrequests, pasada });
+    if (panorama) {
+      await env.RADAR_KV.put(`radar:panorama:${hoy}`, panorama, { expirationTtl: TTL_DIA });
+    }
   }
 
   await registrarMetaPasada(env, {

@@ -22,6 +22,10 @@ const SISTEMA_RESUMEN =
   'Responde EXACTAMENTE en este formato, dos líneas, sin nada más:\n' +
   'RELEVANCIA: <número del 1 al 5>\n' +
   'RESUMEN: <resumen factual de 2-3 frases en español, con lo más destacado del artículo, sin opinar>\n\n' +
+  'Escribe en español, pero mantén en inglés los términos técnicos ya extendidos en la comunidad de IA/ML tal ' +
+  'cual se usan (ej. fine-tuning, embeddings, prompt, dataset, benchmark, overfitting, inference) — no fuerces ' +
+  'traducciones o calcos (nunca "ajuste fino", "incrustaciones") que suenan peor y son menos precisos para el ' +
+  'público técnico de este digest.\n\n' +
   'Para RELEVANCIA, el criterio PRINCIPAL es si el tema central es IA/ML/LLMs — no basta con que sea contenido ' +
   'técnico interesante de otro ámbito (herramientas de desarrollo, tipografía, hosting, rendimiento web, etc.), ' +
   'eso puntúa bajo aunque tenga sustancia. 1-2 = no trata de IA de forma central, o es genérico/lifestyle/listas ' +
@@ -80,10 +84,10 @@ export async function resumir(env, item, fuente, opciones = {}) {
     if (match) {
       const relevancia = parseInt(match[1], 10);
       const resumen = desescapar(match[2].trim());
-      return { relevante: relevancia >= RESUMEN.UMBRAL_RELEVANCIA, resumen: resumen || item.titulo, contexto };
+      return { relevante: relevancia >= RESUMEN.UMBRAL_RELEVANCIA, resumen: resumen || item.titulo, contexto, relevancia };
     }
     // El modelo no siguió el formato: mejor incluirlo con lo que haya que perderlo.
-    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto };
+    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto, relevancia: null };
   } catch (err) {
     // Si falla la llamada, mejor publicar con el titular que perder la pieza —
     // pero deja rastro en los logs para poder depurarlo (`wrangler tail`).
@@ -133,7 +137,7 @@ async function llamarWorkersAI(env, contenidoUsuario) {
   };
 }
 
-async function llamarHaiku(env, contenidoUsuario, contador) {
+async function llamarHaiku(env, contenidoUsuario, contador, sistema = SISTEMA_RESUMEN, maxTokens = 300) {
   // Fallo cerrado y explícito si falta el secret — mejor un error claro en
   // los logs que una petición con la cabecera de auth vacía/rota.
   if (!env.ANTHROPIC_API_KEY) {
@@ -148,8 +152,8 @@ async function llamarHaiku(env, contenidoUsuario, contador) {
     },
     body: JSON.stringify({
       model: MODELO_HAIKU,
-      max_tokens: 300,
-      system: SISTEMA_RESUMEN,
+      max_tokens: maxTokens,
+      system: sistema,
       messages: [{ role: 'user', content: contenidoUsuario }],
     }),
   });
@@ -162,6 +166,45 @@ async function llamarHaiku(env, contenidoUsuario, contador) {
   const texto = ((datos.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).trim();
   const uso = datos.usage || {};
   return { texto, tokensIn: uso.input_tokens || 0, tokensOut: uso.output_tokens || 0 };
+}
+
+const SISTEMA_PANORAMA =
+  'Eres el editor de "El Radar", un digest diario de IA/ML/LLMs. Se te da la lista de piezas ya evaluadas y ' +
+  'publicadas hoy (título y resumen de cada una — dato propio ya verificado, no contenido de terceros). Escribe un ' +
+  'panorama de 2-4 frases en español que conecte los temas más relevantes del día para alguien que solo va a leer ' +
+  'esto, no cada pieza: qué destaca, qué tendencia se repite entre varias piezas, si algo pesa más que el resto. ' +
+  'No listes todas las piezas ni repitas un titular literalmente, no inventes nada que no esté en los resúmenes ' +
+  'dados. Si las piezas no tienen nada en común entre sí o son muy pocas, sé breve y neutro en vez de forzar una ' +
+  'conexión que no existe. Escribe en español, pero mantén en inglés los términos técnicos ya extendidos en la ' +
+  'comunidad de IA/ML (fine-tuning, embeddings, prompt, dataset, benchmark...) — no los traduzcas.';
+
+/**
+ * Síntesis del día (no evaluación por pieza, ver `resumir`): una llamada más
+ * a Haiku sobre lo ya publicado hoy, para dar una vista de conjunto antes de
+ * la lista pieza a pieza. Best-effort: si falla o no hay items, `null` — el
+ * digest se sirve igual sin panorama, no es una pieza crítica del pipeline.
+ */
+export async function generarPanorama(env, items, opciones = {}) {
+  const { contador = null, pasada = 'sin-pasada' } = opciones;
+  if (!items.length) return null;
+  const listado = items.map((it, i) => `${i + 1}. ${it.titulo} — ${it.resumen}`).join('\n');
+  try {
+    const { texto, tokensIn, tokensOut } = await llamarHaiku(env, listado, contador, SISTEMA_PANORAMA, 220);
+    await registrarLlamada(env, {
+      pasada,
+      modelo: MODELO_HAIKU,
+      proposito: 'panorama_diario',
+      tokensIn,
+      tokensOut,
+      itemLink: null,
+      fuente: null,
+      resultado: 'ok',
+    });
+    return desescapar(texto) || null;
+  } catch (err) {
+    console.error(`[radar] fallo generando panorama: ${err.message}`);
+    return null;
+  }
 }
 
 function desescapar(texto) {
