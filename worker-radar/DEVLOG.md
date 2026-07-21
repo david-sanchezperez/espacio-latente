@@ -327,3 +327,29 @@ estándar en escritura técnica en español para audiencia técnica.
 local, datos de ejemplo) para ver panorama + estrellas renderizados de
 verdad antes de tocar producción — mismo criterio que toda esta fase 2,
 nunca desplegar sin verificar el resultado real primero.
+
+**Bug real encontrado en producción, corregido el mismo día**: la primera
+versión del panorama, verificada con datos reales (no de ejemplo), salió
+cortada a mitad de frase y con Markdown crudo (`#`, `**`) visible como
+texto literal — `max_tokens: 220` no alcanzaba para sintetizar hasta 79
+items de golpe, y el prompt nunca prohibía explícitamente el formato.
+Corregido: `SISTEMA_PANORAMA` ahora prohíbe Markdown/encabezados de forma
+explícita y exige "EXACTAMENTE 2 a 4 frases" con más firmeza;
+`generarPanorama()` prioriza como máximo 25 items por relevancia en vez de
+intentar cubrir todo el día (menos prompt, menos tentación de divagar);
+`max_tokens` subido a 260. Verificado de nuevo en producción tras el fix:
+panorama completo, sin cortes, sin marcas de formato.
+
+**Primeros aciertos reales del umbral `relacionado` (0.65) tras
+calibrarlo**: una pasada completa (`/ejecutar` sin `mitad`, ~79 items)
+clasificó 2 items como `relacionado` (similitudes 0.758 y 0.798) — el
+umbral ya detecta casos reales, no solo el que sirvió para calibrarlo.
+
+**Dato a vigilar, no a resolver todavía** (mismo criterio que la decisión
+de monitorizar el margen de subrequests): esa misma pasada de estrés puso
+~46% de los items en `sin_presupuesto` (36 de 79) — el corte de seguridad
+se activa con más frecuencia de la esperada. Matiz importante: `/ejecutar`
+sin `mitad` procesa las ~28 fuentes de golpe, mientras que el cron real
+reparte por la mitad en cada pasada — el volumen real de una pasada
+programada debería ser bastante menor. Queda para revisar con datos de
+pasadas de cron reales, no de este test de estrés manual.

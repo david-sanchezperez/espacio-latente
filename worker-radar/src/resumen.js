@@ -171,8 +171,14 @@ async function llamarHaiku(env, contenidoUsuario, contador, sistema = SISTEMA_RE
 const SISTEMA_PANORAMA =
   'Eres el editor de "El Radar", un digest diario de IA/ML/LLMs. Se te da la lista de piezas ya evaluadas y ' +
   'publicadas hoy (título y resumen de cada una — dato propio ya verificado, no contenido de terceros). Escribe un ' +
-  'panorama de 2-4 frases en español que conecte los temas más relevantes del día para alguien que solo va a leer ' +
-  'esto, no cada pieza: qué destaca, qué tendencia se repite entre varias piezas, si algo pesa más que el resto. ' +
+  'panorama de EXACTAMENTE 2 a 4 frases en español — ni una más, aunque haya muchas piezas y muchos temas — que ' +
+  'conecte lo más relevante del día para alguien que solo va a leer esto, no cada pieza: qué destaca, qué tendencia ' +
+  'se repite entre varias piezas, si algo pesa más que el resto. Con muchas piezas, elige lo más importante y deja ' +
+  'el resto fuera — no intentes cubrirlo todo, eso es lo que rompe el límite de frases.\n\n' +
+  'Responde EXCLUSIVAMENTE con esas frases en texto corrido, sin nada más: NUNCA un título, encabezado o frase ' +
+  'introductoria antes del contenido, NUNCA Markdown (nada de "#", "**", listas con guiones o numeradas) — esto se ' +
+  'inserta tal cual en HTML como texto plano, cualquier marca de formato se ve como asteriscos o almohadillas ' +
+  'literales para quien lee.\n\n' +
   'No listes todas las piezas ni repitas un titular literalmente, no inventes nada que no esté en los resúmenes ' +
   'dados. Si las piezas no tienen nada en común entre sí o son muy pocas, sé breve y neutro en vez de forzar una ' +
   'conexión que no existe. Escribe en español, pero mantén en inglés los términos técnicos ya extendidos en la ' +
@@ -184,12 +190,19 @@ const SISTEMA_PANORAMA =
  * la lista pieza a pieza. Best-effort: si falla o no hay items, `null` — el
  * digest se sirve igual sin panorama, no es una pieza crítica del pipeline.
  */
+const PANORAMA_MAX_ITEMS = 25; // más allá de esto el prompt crece demasiado y el modelo tiende a divagar
+
 export async function generarPanorama(env, items, opciones = {}) {
   const { contador = null, pasada = 'sin-pasada' } = opciones;
   if (!items.length) return null;
-  const listado = items.map((it, i) => `${i + 1}. ${it.titulo} — ${it.resumen}`).join('\n');
+  // Con muchas piezas en el día, priorizar las de mayor relevancia — el
+  // panorama es una síntesis de lo más importante, no un resumen de todo.
+  const seleccion = [...items]
+    .sort((a, b) => (b.relevancia ?? 0) - (a.relevancia ?? 0))
+    .slice(0, PANORAMA_MAX_ITEMS);
+  const listado = seleccion.map((it, i) => `${i + 1}. ${it.titulo} — ${it.resumen}`).join('\n');
   try {
-    const { texto, tokensIn, tokensOut } = await llamarHaiku(env, listado, contador, SISTEMA_PANORAMA, 220);
+    const { texto, tokensIn, tokensOut } = await llamarHaiku(env, listado, contador, SISTEMA_PANORAMA, 260);
     await registrarLlamada(env, {
       pasada,
       modelo: MODELO_HAIKU,
