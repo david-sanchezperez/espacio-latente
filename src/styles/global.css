@@ -467,6 +467,47 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 .umbral-demo-presets button:hover { border-color: var(--ambar); color: var(--ambar); }
 
+/* --- Demo interactiva del pipeline del radar (paso a paso, con ramas) --- */
+.pipeline-demo {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 1.5rem;
+  font-family: var(--f-mono);
+}
+.pipeline-demo-escenarios { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.pipeline-demo-escenarios button {
+  font-family: var(--f-mono); font-size: 0.78rem; color: var(--acero);
+  background: var(--grafito); border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.4rem 0.8rem; cursor: pointer;
+}
+.pipeline-demo-escenarios button:hover { border-color: var(--acero); }
+.pipeline-demo-escenarios button.is-active { color: var(--ambar); border-color: var(--ambar); }
+.pipeline-demo-caption {
+  min-height: 2.8rem; color: var(--ambar); font-size: 0.85rem;
+  margin-bottom: 1rem; line-height: 1.5;
+}
+.pipeline-demo-pasos { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-bottom: 1.1rem; }
+.pipeline-demo-paso {
+  background: var(--grafito); border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.55rem 0.7rem; font-size: 0.72rem; color: var(--acero); text-align: center;
+  transition: all 0.2s ease; flex: 1 1 auto; min-width: 6.5rem;
+}
+.pipeline-demo-paso.is-active {
+  border-color: var(--ambar); color: var(--hueso); box-shadow: 0 0 0 1px var(--ambar) inset;
+}
+.pipeline-demo-flecha { color: var(--acero); font-size: 0.85rem; flex: 0 0 auto; }
+.pipeline-demo-controles { display: flex; gap: 0.6rem; }
+.pipeline-demo-controles button {
+  font-family: var(--f-mono); font-size: 0.8rem; color: var(--hueso);
+  background: var(--grafito); border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.4rem 0.9rem; cursor: pointer;
+}
+.pipeline-demo-controles button:hover:not(:disabled) { border-color: var(--acero); }
+.pipeline-demo-controles button:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 640px) {
+  .pipeline-demo-paso { min-width: 100%; }
+  .pipeline-demo-flecha { display: none; }
+}
+
 /* --- Buzón --- */
 .buzon { padding: 0 0 5rem; }
 .buzon form { display: grid; gap: 0.9rem; max-width: 540px; }
