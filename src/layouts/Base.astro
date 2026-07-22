@@ -26,6 +26,17 @@ const enlaceBuzon = lang === 'es' ? '/#buzon' : '/en/#buzon';
     <meta name="description" content={desc} />
     <link rel="alternate" hreflang="es" href={lang === 'es' ? Astro.url.pathname : enlaceIdioma} />
     <link rel="alternate" hreflang="en" href={lang === 'en' ? Astro.url.pathname : enlaceIdioma} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={titulo} />
+    <meta property="og:description" content={desc} />
+    <meta property="og:url" content={Astro.url.href} />
+    <meta property="og:locale" content={lang === 'es' ? 'es_ES' : 'en_US'} />
+    <meta property="og:image" content="https://espacio-latente.com/images/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={titulo} />
+    <meta name="twitter:description" content={desc} />
+    <meta name="twitter:image" content="https://espacio-latente.com/images/og.png" />
   </head>
   <body>
     <nav class="chasis">
@@ -44,7 +55,7 @@ const enlaceBuzon = lang === 'es' ? '/#buzon' : '/en/#buzon';
     </main>
     <footer>
       <div class="contenedor">
-        {strings['footer.texto']} · <a href={enlaceBuzon}>{strings['footer.buzon']}</a>
+        {strings['footer.texto']} · <a href={enlaceBuzon}>{strings['footer.buzon']}</a> · <a href="https://www.linkedin.com/in/davidsanchezperez/" target="_blank" rel="noopener">{strings['footer.linkedin']}</a>
       </div>
     </footer>
   </body>
