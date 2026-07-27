@@ -14,8 +14,23 @@ const { titulo = 'Espacio Latente', descripcion, lang = 'es', altHref } = Astro.
 const strings = t(lang);
 const desc = descripcion ?? strings['meta.descripcion'];
 const otroIdioma: Idioma = lang === 'es' ? 'en' : 'es';
+// El selector de idioma siempre lleva a algún sitio: si esta página no está
+// traducida, a la portada del otro idioma.
 const enlaceIdioma = altHref ?? (lang === 'es' ? '/en/' : '/');
 const enlaceBuzon = lang === 'es' ? '/#buzon' : '/en/#buzon';
+
+// Los hreflang, en cambio, solo se emiten cuando existe de verdad la versión
+// equivalente: declarar que la portada en inglés es la traducción de un
+// artículo suelto es justo lo que hace que un buscador ignore la señal.
+// Absolutos, como pide la especificación (una ruta relativa no es válida).
+const urlAbsoluta = (ruta: string) => new URL(ruta, Astro.site ?? Astro.url.origin).href;
+const alternativas = altHref
+  ? [
+      { hreflang: lang, href: urlAbsoluta(Astro.url.pathname) },
+      { hreflang: otroIdioma, href: urlAbsoluta(altHref) },
+      { hreflang: 'x-default', href: urlAbsoluta(lang === 'es' ? Astro.url.pathname : altHref) },
+    ]
+  : [];
 ---
 <!doctype html>
 <html lang={lang}>
@@ -24,8 +39,8 @@ const enlaceBuzon = lang === 'es' ? '/#buzon' : '/en/#buzon';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{titulo}</title>
     <meta name="description" content={desc} />
-    <link rel="alternate" hreflang="es" href={lang === 'es' ? Astro.url.pathname : enlaceIdioma} />
-    <link rel="alternate" hreflang="en" href={lang === 'en' ? Astro.url.pathname : enlaceIdioma} />
+    <link rel="canonical" href={urlAbsoluta(Astro.url.pathname)} />
+    {alternativas.map((alt) => <link rel="alternate" hreflang={alt.hreflang} href={alt.href} />)}
 
     <meta property="og:type" content="website" />
     <meta property="og:title" content={titulo} />

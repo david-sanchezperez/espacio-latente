@@ -151,7 +151,11 @@ const lineasBio =
         '> _',
       ];
 ---
-<Base lang={lang} titulo={lang === 'es' ? 'Espacio Latente' : 'Espacio Latente — Latent Space'}>
+<Base
+  lang={lang}
+  titulo={lang === 'es' ? 'Espacio Latente' : 'Espacio Latente — Latent Space'}
+  altHref={lang === 'es' ? '/en/' : '/'}
+>
   <!-- HERO -->
   <section class="hero">
     <p class="etiqueta">// espacio-latente.com</p>
