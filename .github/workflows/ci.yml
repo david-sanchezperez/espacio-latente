@@ -1,0 +1,25 @@
+# CI mínima: que ni los tests del radar ni el build del sitio se rompan sin
+# que nadie se entere. No despliega nada — el despliegue del sitio lo hace
+# Cloudflare Pages con cada push, y los Workers se despliegan a mano con
+# `wrangler deploy`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Tests del radar
+        run: npm test
+      - name: Build del sitio
+        run: npm run build
