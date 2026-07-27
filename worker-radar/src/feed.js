@@ -48,6 +48,11 @@ function limpiar(texto) {
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&') // siempre el último: cualquier "&algo;" sin decodificar antes quedaría roto si esto va primero
+    // Segunda pasada de etiquetas: muchas fuentes (WordPress y derivados)
+    // mandan el HTML del cuerpo ESCAPADO dentro de <description>, así que
+    // hasta aquí no era HTML sino "&lt;p&gt;" — sin esta pasada, el "<p>"
+    // recién decodificado se publicaría como texto literal en el digest.
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

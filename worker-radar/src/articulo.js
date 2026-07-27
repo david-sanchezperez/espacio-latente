@@ -95,6 +95,10 @@ function limpiarParrafo(html) {
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
+    // Segunda pasada: si el párrafo traía HTML escapado (&lt;p&gt;...), hasta
+    // la línea anterior no era una etiqueta y se habría colado como texto
+    // literal en el resumen. Mismo criterio que `limpiar` en feed.js.
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
