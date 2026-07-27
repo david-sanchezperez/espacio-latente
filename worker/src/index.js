@@ -4,6 +4,15 @@
  * con tu biografía como system prompt. La API key vive en un secret
  * de Cloudflare (nunca en el frontend).
  *
+ * ⚠️ ESTADO: HOY LA WEB NO LLAMA A ESTE WORKER. El componente `AgenteBio.jsx`
+ * pasó a respuestas fijas (sin API, sin coste), así que este endpoint puede
+ * seguir desplegado y facturando sin que nadie lo use. Decide una de las dos:
+ *   - Reconectarlo: el frontend tendría que volver a enviar `messages` y un
+ *     token de Turnstile a la URL del Worker.
+ *   - Retirarlo: `cd worker && npx wrangler delete` (y borrar esta carpeta).
+ *     Borrar solo la carpeta NO apaga el Worker desplegado.
+ * Comprueba si sigue vivo con: `cd worker && npx wrangler deployments list`.
+ *
  * GUARDARRAÍLES contra abuso (importante — léelo antes de desplegar):
  *   1. Turnstile: el frontend debe enviar un token de Cloudflare Turnstile
  *      que aquí se verifica antes de gastar un solo token de la API.
@@ -83,35 +92,49 @@ Reglas:
 - Nunca inventes datos sobre el autor.
 `;
 
-const CORS = {
-  // '*' vale mientras desarrollas en local; cuando despliegues de verdad,
-  // cámbialo a 'https://espacio-latente.com' para que solo tu web pueda
-  // usar el agente.
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+// Solo la propia web puede usar el agente. Con '*' (como estaba) cualquier
+// página de cualquier dominio podía gastar la API key desde el navegador de
+// sus visitantes. Para desarrollo local se admite además localhost:4321, el
+// puerto de `astro dev`.
+const ORIGENES_PERMITIDOS = new Set([
+  'https://espacio-latente.com',
+  'https://www.espacio-latente.com',
+  'http://localhost:4321',
+]);
+
+function cabecerasCors(request) {
+  const origen = request.headers.get('Origin');
+  return {
+    'Access-Control-Allow-Origin': ORIGENES_PERMITIDOS.has(origen) ? origen : 'https://espacio-latente.com',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    Vary: 'Origin',
+  };
+}
 
 export default {
   async fetch(request, env) {
+    const cors = cabecerasCors(request);
+    const responder = (obj, status = 200) => json(obj, status, cors);
+
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS });
+      return new Response(null, { headers: cors });
     }
     if (request.method !== 'POST') {
-      return json({ error: 'Método no permitido' }, 405);
+      return responder({ error: 'Método no permitido' }, 405);
     }
 
     let body;
     try {
       body = await request.json();
     } catch {
-      return json({ error: 'JSON inválido' }, 400);
+      return responder({ error: 'JSON inválido' }, 400);
     }
 
     // --- Guardarraíl 1: verificación humana con Turnstile ---
     const turnstileOk = await verificarTurnstile(body.turnstileToken, request, env);
     if (!turnstileOk) {
-      return json({ error: 'Verificación humana fallida. Recarga la página.' }, 403);
+      return responder({ error: 'Verificación humana fallida. Recarga la página.' }, 403);
     }
 
     // --- Guardarraíl 2: límite por IP ---
@@ -120,22 +143,25 @@ export default {
     const claveIp = `ip:${ip}:${hoy}`;
     const usoIp = parseInt((await env.RATE_LIMIT.get(claveIp)) || '0', 10);
     if (usoIp >= MAX_POR_IP_DIA) {
-      return json({ error: 'Has agotado tus preguntas de hoy. Vuelve mañana.' }, 429);
+      return responder({ error: 'Has agotado tus preguntas de hoy. Vuelve mañana.' }, 429);
     }
 
     // --- Guardarraíl 3: límite global del día ---
     const claveGlobal = `global:${hoy}`;
     const usoGlobal = parseInt((await env.RATE_LIMIT.get(claveGlobal)) || '0', 10);
     if (usoGlobal >= MAX_GLOBAL_DIA) {
-      return json({ error: 'El agente ha alcanzado su límite de uso diario. Vuelve mañana.' }, 429);
+      return responder({ error: 'El agente ha alcanzado su límite de uso diario. Vuelve mañana.' }, 429);
     }
 
+    // Solo roles y contenidos que la API acepta: un historial con un `role`
+    // inventado o un `content` que no sea texto se rechaza en Anthropic, así
+    // que filtrarlo aquí ahorra una llamada de pago que iba a fallar igual.
     const messages = (body.messages || [])
-      .filter((m) => m.role && m.content)
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
       .slice(-12); // limita el historial para controlar coste
 
     if (messages.length === 0) {
-      return json({ error: 'Sin mensajes' }, 400);
+      return responder({ error: 'Sin mensajes' }, 400);
     }
 
     // Incrementa los contadores ANTES de llamar a la API (así, aunque la
@@ -159,7 +185,7 @@ export default {
     });
 
     if (!res.ok) {
-      return json({ error: 'Error llamando a la API' }, 502);
+      return responder({ error: 'Error llamando a la API' }, 502);
     }
 
     const data = await res.json();
@@ -168,7 +194,7 @@ export default {
       .map((b) => b.text)
       .join('\n');
 
-    return json({ respuesta });
+    return responder({ respuesta });
   },
 };
 
@@ -188,9 +214,9 @@ async function verificarTurnstile(token, request, env) {
   return data.success === true;
 }
 
-function json(obj, status = 200) {
+function json(obj, status = 200, cors = {}) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS },
+    headers: { 'Content-Type': 'application/json', ...cors },
   });
 }

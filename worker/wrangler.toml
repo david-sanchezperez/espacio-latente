@@ -1,6 +1,6 @@
 name = "espacio-latente-agente-bio"
 main = "src/index.js"
-compatibility_date = "2026-01-01"
+compatibility_date = "2026-07-14"   # alineado con el resto de Workers del proyecto
 
 # La API key y el secret de Turnstile NO van aquí. Se guardan como secrets:
 #   npx wrangler secret put ANTHROPIC_API_KEY
