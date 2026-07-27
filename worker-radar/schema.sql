@@ -34,7 +34,12 @@ CREATE TABLE IF NOT EXISTS radar_llamadas_llm (
   subrequests_total INTEGER,          -- solo en filas meta_pasada
   items_procesados INTEGER,           -- solo en filas meta_pasada
   duracion_ms INTEGER,                -- solo en filas meta_pasada
-  clasificacion TEXT,                 -- solo en filas dedup_semantica: 'duplicado' | 'relacionado' | 'nuevo'
+  -- solo en filas dedup_semantica: 'duplicado' | 'relacionado' | 'nuevo' |
+  -- 'sin_presupuesto' (se agotó el margen de subrequests antes de mirar la
+  -- memoria) | 'sin_embedding' (había margen, pero Workers AI falló). Los dos
+  -- últimos se distinguen a propósito: uno es una decisión del pipeline y el
+  -- otro un incidente que conviene poder contar por separado.
+  clasificacion TEXT,
   similitud_top REAL,                 -- solo en filas dedup_semantica: score coseno del vecino más parecido
   vecino_link TEXT                    -- solo en filas dedup_semantica: link de ese vecino
 );

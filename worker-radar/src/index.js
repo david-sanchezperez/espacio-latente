@@ -8,10 +8,11 @@
  *
  * El cron y /ejecutar no procesan las fuentes directamente: las reparten en
  * lotes pequeños (`COLA.FUENTES_POR_LOTE`) y encolan un mensaje por lote en
- * `RADAR_QUEUE`. Cada mensaje se procesa en su propia invocación del
- * consumer, con su propio presupuesto de 50 subrequests externos — ver
- * DEVLOG.md para el porqué (una sola invocación con las 28 fuentes agotaba
- * el límite, confirmado en producción con 59).
+ * `RADAR_QUEUE`, más un mensaje retrasado de cierre de pasada que genera el
+ * panorama del día una sola vez. Cada mensaje se procesa en su propia
+ * invocación del consumer, con su propio presupuesto de 50 subrequests
+ * externos — ver DEVLOG.md para el porqué (una sola invocación con las 28
+ * fuentes agotaba el límite, confirmado en producción con 59).
  *
  * Despliegue:
  *   cd worker-radar
@@ -23,10 +24,10 @@ import { FUENTES } from './sources.js';
 import { obtenerItems } from './feed.js';
 import { resumir, esReleaseSignificativo, generarPanorama } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
-import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom } from './paginas.js';
-import { ARCHIVO, COLA, MEMORIA } from './config.js';
+import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap } from './paginas.js';
+import { ARCHIVO, COLA, DESCARTADOS, MEMORIA, PRESUPUESTO } from './config.js';
 import { crearContadorSubrequests, registrarMetaPasada, registrarDedup } from './costes.js';
-import { generarEmbedding, buscarVecinos, guardarVector, clasificarVecinos } from './memoria.js';
+import { generarEmbeddings, buscarVecinos, guardarVectores, clasificarVecinos } from './memoria.js';
 
 const TTL_DIA = ARCHIVO.TTL_DIA_SEGUNDOS;
 
@@ -51,6 +52,16 @@ export default {
       if (partes[0] === 'feed.xml' && partes.length === 1) {
         return await paginaFeed(env, url.origin);
       }
+      if (partes[0] === 'robots.txt' && partes.length === 1) {
+        return new Response(renderRobots(), {
+          headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'max-age=86400' },
+        });
+      }
+      if (partes[0] === 'sitemap.xml' && partes.length === 1) {
+        return new Response(renderSitemap(await fechasConArchivo(env)), {
+          headers: { 'Content-Type': 'application/xml; charset=utf-8' },
+        });
+      }
       if (partes[0] === 'comparar' && request.method === 'POST') {
         return await paginaComparar(request, env);
       }
@@ -74,35 +85,79 @@ export default {
   },
 
   /**
-   * Consumer de la cola `radar-fuentes`. Un mensaje = un lote pequeño de
-   * fuentes (`COLA.FUENTES_POR_LOTE`), procesado con `ejecutarDigest` igual
-   * que antes de la migración — el cambio es solo cuántas fuentes entran en
-   * cada invocación, no la lógica de dedup/resumen/publicación.
+   * Consumer de la cola `radar-fuentes`. Dos tipos de mensaje:
+   *   - lote de fuentes (`COLA.FUENTES_POR_LOTE`), procesado con
+   *     `ejecutarDigest` igual que antes de la migración — el cambio es solo
+   *     cuántas fuentes entran en cada invocación, no la lógica de
+   *     dedup/resumen/publicación.
+   *   - cierre de pasada (`tipo: 'panorama'`), que sintetiza el día UNA vez
+   *     en vez de una por lote (ver `cerrarPasada`).
    * `max_concurrency = 1` (wrangler.toml) evita que dos mensajes escriban a
    * la vez en la misma clave de KV del día.
    */
   async queue(batch, env, ctx) {
     for (const mensaje of batch.messages) {
-      const { fuentes, pasada } = mensaje.body;
+      const { fuentes, pasada, tipo } = mensaje.body;
       try {
-        await ejecutarDigest(env, fuentes, pasada);
+        if (tipo === 'panorama') {
+          await cerrarPasada(env, pasada);
+        } else {
+          await ejecutarDigest(env, fuentes, pasada);
+        }
         mensaje.ack();
       } catch (err) {
-        console.error(`[radar] fallo procesando lote de cola (pasada ${pasada}): ${err.message}`);
+        console.error(`[radar] fallo procesando mensaje de cola (pasada ${pasada}, tipo ${tipo || 'fuentes'}): ${err.message}`);
         mensaje.retry();
       }
     }
   },
 };
 
-/** Reparte `fuentes` en lotes de `COLA.FUENTES_POR_LOTE` y encola un mensaje por lote. */
+/**
+ * Reparte `fuentes` en lotes de `COLA.FUENTES_POR_LOTE` y encola un mensaje
+ * por lote, más un mensaje retrasado de cierre de pasada para el panorama.
+ * El panorama va aparte porque es una síntesis del día entero: generarlo en
+ * cada lote (como se hacía) gastaba una llamada a Haiku por lote para
+ * sobrescribir el resultado anterior.
+ */
 async function encolarPorLotes(env, fuentes, pasada) {
   const lotes = [];
   for (let i = 0; i < fuentes.length; i += COLA.FUENTES_POR_LOTE) {
     lotes.push(fuentes.slice(i, i + COLA.FUENTES_POR_LOTE));
   }
   await Promise.all(lotes.map((lote) => env.RADAR_QUEUE.send({ fuentes: lote, pasada })));
+  await env.RADAR_QUEUE.send(
+    { tipo: 'panorama', pasada },
+    { delaySeconds: COLA.RETRASO_PANORAMA_SEGUNDOS }
+  );
   return lotes.length;
+}
+
+/**
+ * Cierre de pasada: regenera el panorama del día una sola vez, cuando todos
+ * los lotes ya han publicado lo suyo. Idempotente y sin coste si no hay nada
+ * nuevo — se guarda cuántas piezas se sintetizaron la última vez y, si el día
+ * sigue teniendo las mismas, no se vuelve a llamar a Haiku (importante
+ * porque un reintento de la cola volvería a pasar por aquí).
+ */
+async function cerrarPasada(env, pasada) {
+  const hoy = fechaISO(0);
+  const items = await leerDia(env, hoy);
+  if (items.length === 0) return;
+
+  const claveMeta = `radar:panorama-items:${hoy}`;
+  const sintetizadas = parseInt((await env.RADAR_KV.get(claveMeta)) || '0', 10);
+  if (sintetizadas === items.length) {
+    console.log(`[radar] cierre ${pasada}: panorama ya al día (${items.length} piezas), no se regenera`);
+    return;
+  }
+
+  const contador = crearContadorSubrequests();
+  const panorama = await generarPanorama(env, items, { contador, pasada });
+  if (!panorama) return; // best-effort: el digest se sirve igual sin panorama
+  await env.RADAR_KV.put(`radar:panorama:${hoy}`, panorama, { expirationTtl: TTL_DIA });
+  await env.RADAR_KV.put(claveMeta, String(items.length), { expirationTtl: TTL_DIA });
+  console.log(`[radar] cierre ${pasada}: panorama regenerado sobre ${items.length} piezas`);
 }
 
 /**
@@ -236,13 +291,17 @@ async function paginaFeed(env, origen) {
   });
 }
 
-async function paginaArchivoIndice(env) {
+/** Fechas con digest guardado, de más reciente a más antigua. */
+async function fechasConArchivo(env) {
   const lista = await env.RADAR_KV.list({ prefix: 'radar:items:' });
-  const fechas = lista.keys
+  return lista.keys
     .map((k) => k.name.replace('radar:items:', ''))
     .sort()
     .reverse();
-  return new Response(renderArchivoIndice(fechas), {
+}
+
+async function paginaArchivoIndice(env) {
+  return new Response(renderArchivoIndice(await fechasConArchivo(env)), {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
 }
@@ -250,6 +309,25 @@ async function paginaArchivoIndice(env) {
 async function leerDia(env, fecha) {
   const raw = await env.RADAR_KV.get(`radar:items:${fecha}`);
   return raw ? JSON.parse(raw) : [];
+}
+
+/**
+ * Links ya evaluados y descartados (baja relevancia, o duplicado de una pieza
+ * fuera de la ventana de hoy). Sin esta memoria corta, un item descartado no
+ * deja rastro en ninguna parte y se vuelve a pagar en la siguiente pasada que
+ * lo encuentre — `feed.js` mira las últimas ~30h y cada fuente se revisa cada
+ * 24h, así que la ventana se solapa siempre. Ver `DESCARTADOS` en config.js.
+ */
+async function leerDescartados(env, fecha) {
+  const raw = await env.RADAR_KV.get(`radar:descartados:${fecha}`);
+  return raw ? JSON.parse(raw) : [];
+}
+
+async function anotarDescartados(env, fecha, links) {
+  const union = [...new Set([...(await leerDescartados(env, fecha)), ...links])];
+  await env.RADAR_KV.put(`radar:descartados:${fecha}`, JSON.stringify(union), {
+    expirationTtl: DESCARTADOS.TTL_SEGUNDOS,
+  });
 }
 
 /**
@@ -262,13 +340,24 @@ function buscarObjetivoFusion(link, existentesHoy, nuevos) {
   return nuevos.find((it) => it.link === link) || existentesHoy.find((it) => it.link === link);
 }
 
+/**
+ * Texto que representa a un item en el espacio de embeddings: título + un
+ * trozo de la descripción. Corto a propósito — el snippet largo del RSS
+ * añade ruido de plantilla (créditos, "leer más") que empuja a todas las
+ * piezas de una misma fuente a parecerse entre sí.
+ */
+function textoParaEmbedding(item) {
+  return `${item.titulo}\n${(item.descripcion || '').slice(0, 500)}`;
+}
+
 function fechaISO(offsetDias) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offsetDias);
   return d.toISOString().slice(0, 10);
 }
 
-async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`) {
+/** Exportada solo para los tests (`test/digest.test.mjs`); en producción se llama desde `queue()`. */
+export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`) {
   const inicio = Date.now();
   const hoy = fechaISO(0);
   const ayer = fechaISO(-1);
@@ -282,12 +371,29 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
   const existentesHoy = await leerDia(env, hoy);
   const existentesAyer = await leerDia(env, ayer);
   const vistos = new Set([...existentesHoy, ...existentesAyer].map((it) => it.link));
+  // Lo ya evaluado y descartado en las últimas pasadas: no se vuelve a pagar.
+  const yaDescartados = new Set([...(await leerDescartados(env, hoy)), ...(await leerDescartados(env, ayer))]);
+  const descartadosNuevos = [];
+  const descartar = (link) => {
+    yaDescartados.add(link);
+    descartadosNuevos.push(link);
+  };
 
   const nuevos = [];
+  const vectoresPendientes = [];
   const porFuente = {};
   const errores = {};
+  // Una fusión sobre una pieza que ya estaba en KV muta `existentesHoy`; si
+  // el lote no publica nada nuevo, esa mutación se perdería sin este flag.
+  let huboCambiosEnExistentes = false;
+  let cortadoPorPresupuesto = false;
 
   for (const fuente of fuentes) {
+    if (contadorSubrequests.externos >= PRESUPUESTO.SUBREQUESTS_DURO) {
+      cortadoPorPresupuesto = true;
+      break;
+    }
+
     let items;
     try {
       items = await obtenerItems(fuente, contadorSubrequests);
@@ -297,34 +403,56 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
       continue;
     }
 
-    let publicados = 0;
-    let descartados = 0;
-    let fusionados = 0;
+    // Primero se decide qué items son candidatos de verdad; así los
+    // embeddings de todos ellos se piden en UNA llamada (ver
+    // `generarEmbeddings`) en vez de una por item.
+    const candidatos = [];
+    let reciclados = 0;
     for (const item of items) {
       if (!item.titulo || !item.link) continue;
       if (vistos.has(item.link)) continue;
+      if (yaDescartados.has(item.link)) {
+        reciclados++;
+        continue;
+      }
       if (fuente.tipo === 'github_release' && !esReleaseSignificativo(fuente, item)) continue;
-
       vistos.add(item.link);
+      candidatos.push(item);
+    }
+
+    // Fase 2 (memoria semántica, ver DEVLOG.md): antes de gastar una llamada
+    // a Haiku, miramos si esto ya es una noticia que tenemos hoy desde otra
+    // fuente (fusionar) o si hay cobertura pasada relacionada (contexto para
+    // el resumen). Best-effort: sin embedding, el item sigue el camino normal.
+    //
+    // env.AI.run()/Vectorize SÍ cuentan contra el límite de 50 subrequests
+    // (verificado en producción, ver memoria.js) — por debajo del presupuesto
+    // se intenta; por encima, se salta fase 2 para no dejar sin margen a
+    // Haiku, que es lo que de verdad no puede fallar.
+    const embeddings =
+      contadorSubrequests.externos < MEMORIA.PRESUPUESTO_SUBREQUESTS_MAX
+        ? await generarEmbeddings(env, candidatos.map(textoParaEmbedding), contadorSubrequests)
+        : [];
+
+    let publicados = 0;
+    let descartados = 0;
+    let fusionados = 0;
+    for (const [i, item] of candidatos.entries()) {
+      // Tope duro: por encima de esto se deja de procesar. Lo que quede sin
+      // ver no se ha escrito en KV, así que la siguiente pasada lo recoge —
+      // mejor aplazar una noticia que reventar la invocación entera.
+      if (contadorSubrequests.externos >= PRESUPUESTO.SUBREQUESTS_DURO) {
+        cortadoPorPresupuesto = true;
+        break;
+      }
       itemsProcesados++;
 
-      // Fase 2 (memoria semántica, ver DEVLOG.md): antes de gastar una
-      // llamada a Haiku, miramos si esto ya es una noticia que tenemos hoy
-      // desde otra fuente (fusionar) o si hay cobertura pasada relacionada
-      // (contexto para el resumen). Best-effort: si el embedding falla,
-      // `vecinos` queda vacío y el item sigue el camino normal de siempre.
-      //
-      // env.AI.run()/Vectorize SÍ cuentan contra el límite de 50 subrequests
-      // (verificado en producción, ver memoria.js) — por debajo del
-      // presupuesto se intenta; por encima, se salta fase 2 para no dejar
-      // sin margen a Haiku, que es lo que de verdad no puede fallar.
+      const embedding = embeddings[i] || null;
+      const hayPresupuestoMemoria = contadorSubrequests.externos < MEMORIA.PRESUPUESTO_SUBREQUESTS_MAX;
       let tipo = 'nuevo';
       let vecino = null;
-      let embedding = null;
-      if (contadorSubrequests.externos < MEMORIA.PRESUPUESTO_SUBREQUESTS_MAX) {
-        const textoEmbedding = `${item.titulo}\n${(item.descripcion || '').slice(0, 500)}`;
-        embedding = await generarEmbedding(env, textoEmbedding, contadorSubrequests);
-        const vecinos = embedding ? await buscarVecinos(env, embedding, MEMORIA.TOP_K, contadorSubrequests) : [];
+      if (embedding && hayPresupuestoMemoria) {
+        const vecinos = await buscarVecinos(env, embedding, MEMORIA.TOP_K, contadorSubrequests);
         ({ tipo, vecino } = clasificarVecinos(vecinos, hoy));
         await registrarDedup(env, {
           pasada,
@@ -334,19 +462,30 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
           vecinoLink: vecino?.link,
         });
       } else {
-        await registrarDedup(env, { pasada, itemLink: item.link, clasificacion: 'sin_presupuesto' });
+        await registrarDedup(env, {
+          pasada,
+          itemLink: item.link,
+          // Dos motivos distintos para no tener memoria semántica de un item,
+          // y conviene distinguirlos en D1: quedarse sin presupuesto es una
+          // decisión del pipeline, que falle el embedding es un incidente.
+          clasificacion: hayPresupuestoMemoria ? 'sin_embedding' : 'sin_presupuesto',
+        });
       }
 
       if (tipo === 'duplicado') {
         const objetivo = buscarObjetivoFusion(vecino.link, existentesHoy, nuevos);
         if (objetivo) {
           objetivo.fuentesAdicionales = objetivo.fuentesAdicionales || [];
-          if (!objetivo.fuentesAdicionales.includes(fuente.nombre)) objetivo.fuentesAdicionales.push(fuente.nombre);
+          if (!objetivo.fuentesAdicionales.includes(fuente.nombre)) {
+            objetivo.fuentesAdicionales.push(fuente.nombre);
+            if (existentesHoy.includes(objetivo)) huboCambiosEnExistentes = true;
+          }
           fusionados++;
         } else {
           // Duplicado de una pieza fuera de la ventana de hoy (ej. de ayer):
           // no hay nada que mutar de forma segura (esa página ya está
           // servida), así que simplemente no se republica.
+          descartar(item.link);
           descartados++;
         }
         continue;
@@ -363,6 +502,7 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
         contexto: tipo === 'relacionado' ? vecino : null,
       });
       if (!relevante) {
+        descartar(item.link);
         descartados++;
         continue;
       }
@@ -380,28 +520,28 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
 
       // Solo se guarda vector de lo que realmente se publica — así los
       // vecinos futuros son siempre piezas reales del digest, nunca ruido
-      // descartado por baja relevancia.
-      if (embedding) await guardarVector(env, { link: item.link, titulo: item.titulo, fecha: nuevo.fecha }, embedding, contadorSubrequests);
+      // descartado por baja relevancia. Se acumulan y se insertan de una vez
+      // al cerrar la pasada (ver `guardarVectores`).
+      if (embedding) {
+        vectoresPendientes.push({ link: item.link, titulo: item.titulo, fecha: nuevo.fecha, vector: embedding });
+      }
     }
-    porFuente[fuente.nombre] =
-      descartados > 0 || fusionados > 0
-        ? `${publicados} (+${descartados} descartadas${fusionados > 0 ? `, +${fusionados} fusionadas` : ''})`
-        : publicados;
+
+    const notas = [];
+    if (descartados > 0) notas.push(`+${descartados} descartadas`);
+    if (fusionados > 0) notas.push(`+${fusionados} fusionadas`);
+    if (reciclados > 0) notas.push(`+${reciclados} ya descartadas antes`);
+    porFuente[fuente.nombre] = notas.length ? `${publicados} (${notas.join(', ')})` : publicados;
   }
 
-  if (nuevos.length > 0) {
+  if (nuevos.length > 0 || huboCambiosEnExistentes) {
     const claveDia = `radar:items:${hoy}`;
-    const todosHoy = [...existentesHoy, ...nuevos];
-    await env.RADAR_KV.put(claveDia, JSON.stringify(todosHoy), { expirationTtl: TTL_DIA });
-
-    // Panorama del día: se recalcula sobre el acumulado cada vez que hay
-    // piezas nuevas, así que refleja "lo publicado hasta ahora", no un cierre
-    // de día fijo. Best-effort — si falla, el digest se sirve igual sin él.
-    const panorama = await generarPanorama(env, todosHoy, { contador: contadorSubrequests, pasada });
-    if (panorama) {
-      await env.RADAR_KV.put(`radar:panorama:${hoy}`, panorama, { expirationTtl: TTL_DIA });
-    }
+    await env.RADAR_KV.put(claveDia, JSON.stringify([...existentesHoy, ...nuevos]), { expirationTtl: TTL_DIA });
   }
+  // El panorama ya no se genera aquí: lo hace el mensaje de cierre de pasada
+  // (`cerrarPasada`), una vez por pasada en vez de una por lote.
+  await guardarVectores(env, vectoresPendientes, contadorSubrequests);
+  if (descartadosNuevos.length > 0) await anotarDescartados(env, hoy, descartadosNuevos);
 
   await registrarMetaPasada(env, {
     pasada,
@@ -411,15 +551,49 @@ async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-turno`)
   });
 
   const fuentesConError = Object.keys(errores).length;
-  const resumenLinea = `[radar] pasada ${hoy}: ${nuevos.length} nuevas, ${fuentesConError}/${fuentes.length} fuentes con error, ${contadorSubrequests.externos} subrequests externos`;
+  const resumenLinea =
+    `[radar] pasada ${hoy}: ${nuevos.length} nuevas, ${fuentesConError}/${fuentes.length} fuentes con error, ` +
+    `${contadorSubrequests.externos} subrequests externos` +
+    (cortadoPorPresupuesto ? ' — CORTADO por tope de subrequests, el resto va a la siguiente pasada' : '');
   if (fuentesConError === fuentes.length && fuentes.length > 0) {
-    // Fallo total: todas las fuentes de esta pasada fallaron. Sin canal de
-    // alertas activo por ahora — esto queda como la señal a buscar con
-    // `wrangler tail` o en el dashboard si algo raro pasa.
     console.error(`${resumenLinea} — FALLO TOTAL DE LA PASADA`);
+    await avisarFalloTotal(env, `${resumenLinea} — FALLO TOTAL DE LA PASADA (${Object.keys(errores).join(', ')})`);
   } else {
     console.log(resumenLinea);
   }
 
-  return { fecha: hoy, totalNuevos: nuevos.length, porFuente, errores, subrequestsExternos: contadorSubrequests.externos };
+  return {
+    fecha: hoy,
+    totalNuevos: nuevos.length,
+    porFuente,
+    errores,
+    subrequestsExternos: contadorSubrequests.externos,
+    cortadoPorPresupuesto,
+  };
+}
+
+/**
+ * Aviso de que TODAS las fuentes de una pasada han fallado — la única señal
+ * que de verdad merece interrumpir a alguien (una fuente caída es rutina; que
+ * caigan todas suele significar que el propio Worker está roto).
+ *
+ * Opcional a propósito: si no hay `ALERTA_WEBHOOK` configurado, esto no hace
+ * nada y el log de error sigue siendo la única señal, como hasta ahora. Para
+ * activarlo basta un webhook que acepte `{ "text": "..." }` (Slack, Discord
+ * con `/slack`, ntfy...):
+ *   npx wrangler secret put ALERTA_WEBHOOK
+ * Best-effort como toda la observabilidad del pipeline: si el aviso falla, se
+ * loguea y no se propaga.
+ */
+async function avisarFalloTotal(env, mensaje) {
+  if (!env.ALERTA_WEBHOOK) return;
+  try {
+    await fetch(env.ALERTA_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: mensaje }),
+    });
+  } catch (err) {
+    console.error(`[radar] fallo enviando alerta de fallo total: ${err.message}`);
+  }
 }

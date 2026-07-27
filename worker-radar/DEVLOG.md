@@ -353,3 +353,91 @@ sin `mitad` procesa las ~28 fuentes de golpe, mientras que el cron real
 reparte por la mitad en cada pasada — el volumen real de una pasada
 programada debería ser bastante menor. Queda para revisar con datos de
 pasadas de cron reales, no de este test de estrés manual.
+
+## Fase 3 — agrupar en lotes lo que se pedía pieza a pieza (2026-07-27)
+
+**Objetivo**: bajar el gasto de subrequests y de Haiku sin tocar lo que se
+publica. Todo lo de esta entrada nace de datos ya recogidos por las fases
+anteriores, no de intuiciones nuevas.
+
+**El ahorro principal — embeddings e inserciones por lote**: cada item nuevo
+gastaba 3 subrequests de memoria semántica (1 `AI.run` para su embedding, 1
+consulta a Vectorize, 1 `insert`). `bge-m3` acepta varios textos en una sola
+llamada y Vectorize acepta varios vectores en un `insert`; solo la consulta
+es irreductiblemente una por item. `ejecutarDigest` ahora decide primero qué
+items de una fuente son candidatos de verdad, pide **todos** sus embeddings
+de golpe y acumula los vectores para insertarlos de una vez al cerrar la
+pasada. El coste de memoria pasa de ~3N a N+2 por lote. Con ese margen
+recuperado, `PRESUPUESTO_SUBREQUESTS_MAX` sube de 30 a 38 — el 46% de items
+en `sin_presupuesto` era consecuencia directa del coste por item, no del
+volumen.
+
+**Tope duro de subrequests, por fin implementado**: es la opción (1) que la
+fase 2 dejó evaluada y sin hacer ("tope duro de items por invocación,
+re-encolando el resto"). `PRESUPUESTO.SUBREQUESTS_DURO = 45`: al superarlo se
+deja de procesar en esa invocación. No hace falta re-encolar nada — lo que no
+se ha procesado no se ha escrito en KV, así que la siguiente pasada lo
+recoge sola. Esto sí es la garantía dura frente al límite de 50 que
+`PRESUPUESTO_SUBREQUESTS_MAX` nunca pudo dar, porque Haiku no se salta nunca.
+
+**El panorama, una vez por pasada y no una por lote**: `generarPanorama` se
+llamaba dentro de `ejecutarDigest`, es decir, una vez por cada lote con
+piezas nuevas, sobrescribiendo el resultado anterior — 3 llamadas a Haiku
+para publicar una. Ahora `encolarPorLotes` encola además un mensaje
+`{ tipo: 'panorama' }` con `delaySeconds` (Queues no garantiza orden, así que
+se retrasa en vez de "ponerlo el último"). `cerrarPasada` es idempotente:
+guarda en KV cuántas piezas sintetizó y no vuelve a llamar a Haiku si el día
+sigue teniendo las mismas — importante porque un reintento de la cola pasa
+por ahí otra vez.
+
+**Memoria corta de lo descartado**: un item que Haiku puntuaba 1-3 no dejaba
+rastro en ninguna parte. Como `feed.js` mira las últimas ~30h y cada fuente
+se revisa cada 24h, la ventana se solapa siempre y ese item se volvía a
+resumir —y a pagar— en la siguiente pasada. Nueva clave
+`radar:descartados:${fecha}` (solo links, TTL 72h, ver `DESCARTADOS` en
+config.js): se consulta antes de gastar nada y se anota al descartar. TTL
+corto a propósito, para no bloquear una pieza de forma permanente por una
+evaluación puntual.
+
+**Bug encontrado y corregido — fusiones que no llegaban a KV**: una fusión
+sobre una pieza ya publicada muta `existentesHoy`, pero la escritura en KV
+estaba dentro de `if (nuevos.length > 0)`. Un lote donde solo hubiera
+duplicados fusionados descartaba la mutación en silencio: la fuente adicional
+no llegaba a verse nunca en la página. Ahora se escribe también cuando hay
+cambios sobre lo existente. Cubierto por test (`test/digest.test.mjs`).
+
+**Bug encontrado y corregido — HTML escapado publicado como texto**: `limpiar`
+(feed.js) quitaba etiquetas ANTES de decodificar entidades, así que una
+fuente que manda su HTML escapado en `<description>` (WordPress y derivados,
+o sea buena parte del feed) acababa con `<p>` y `<a href=...>` literales
+dentro del texto que se le pasa a Haiku y que se publica. Se añade una
+segunda pasada de limpieza después de decodificar, en `feed.js` y en
+`articulo.js`. Lo encontró un test nuevo, no producción.
+
+**Observabilidad y avisos**: `dedup_semantica` distingue ahora
+`sin_presupuesto` (decisión del pipeline) de `sin_embedding` (fallo de
+Workers AI) — se mezclaban bajo el primero y son cosas distintas al leer D1.
+Y el "FALLO TOTAL DE LA PASADA", que hasta ahora solo existía en los logs,
+puede avisar a un webhook si se configura el secret `ALERTA_WEBHOOK`
+(opcional: sin él, todo sigue igual que antes).
+
+**Tests**: `npm test` ejecuta ahora los 6 ficheros de `worker-radar/test/`
+(antes no había forma de ejecutarlos: no existía script y `node --test test/`
+fallaba porque Node no acepta un directorio como argumento). Se añaden tests
+del parser de feeds, del embedding/inserción por lotes (alineamiento de
+vectores con sus items, conteo de subrequests, degradación ante fallos) y un
+test de `ejecutarDigest` de punta a punta con `env` falso, que es el que
+cubre fusión, descarte, contexto histórico y fuente caída. `articulo.test.mjs`
+sale de `test/` a `scripts/probar-articulo.mjs`: hacía peticiones reales a
+internet y no comprobaba nada, no era un test.
+
+**Sin verificar todavía en producción** (esta entrada se escribe desde el
+código, no desde una pasada real): que `delaySeconds` en la cola llegue
+después de los lotes con el volumen real, y el conteo de subrequests que se
+observe en `meta_pasada` tras el cambio. Es lo primero que hay que mirar en
+D1 tras desplegar, junto con la proporción de `sin_presupuesto`, que debería
+bajar mucho.
+
+**Sigue abierto de fases anteriores**: `UMBRAL_DUPLICADO` (0.93) sin un solo
+par real que lo ejercite, y las claves de `usage` de Workers AI sin
+confirmar (`resumen.js`), que hoy caen a 0 en silencio.

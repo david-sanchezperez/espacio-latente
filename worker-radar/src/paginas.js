@@ -53,14 +53,38 @@ const ESTILO = `
   .archivo-lista li { border-bottom: 1px solid var(--borde); padding: 0.7rem 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
 `;
 
-function envoltorio(titulo, cuerpo) {
+const DESCRIPCION =
+  'Píldora diaria de lo que se mueve en IA: laboratorios, papers, blogs de referencia y releases relevantes, ' +
+  'resumido y con link al original.';
+const ORIGEN = 'https://radar.espacio-latente.com';
+
+/**
+ * `rutaCanonica` es la ruta de esta página ('/', '/archivo', '/archivo/FECHA').
+ * Sin ella el canonical apuntaría siempre a la home y el archivo entero
+ * competiría consigo mismo en los buscadores.
+ */
+function envoltorio(titulo, cuerpo, rutaCanonica = '/') {
+  const tituloCompleto = `${titulo} — Radar · Espacio Latente`;
   return `<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${titulo} — Radar · Espacio Latente</title>
+  <title>${tituloCompleto}</title>
+  <meta name="description" content="${escapar(DESCRIPCION)}" />
+  <link rel="canonical" href="${escapar(ORIGEN + rutaCanonica)}" />
   <link rel="alternate" type="application/atom+xml" title="El radar — Espacio Latente" href="/feed.xml" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Espacio Latente" />
+  <meta property="og:title" content="${escapar(tituloCompleto)}" />
+  <meta property="og:description" content="${escapar(DESCRIPCION)}" />
+  <meta property="og:url" content="${escapar(ORIGEN + rutaCanonica)}" />
+  <meta property="og:locale" content="es_ES" />
+  <meta property="og:image" content="https://espacio-latente.com/images/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapar(tituloCompleto)}" />
+  <meta name="twitter:description" content="${escapar(DESCRIPCION)}" />
+  <meta name="twitter:image" content="https://espacio-latente.com/images/og.png" />
   <style>${ESTILO}</style>
 </head>
 <body>
@@ -123,7 +147,7 @@ export function renderDigest({ hoy, ayer, itemsHoy, itemsAyer, soloUnDia, panora
     panorama + (soloUnDia
       ? renderSeccion(hoy, itemsHoy)
       : renderSeccion(`Hoy · ${hoy}`, itemsHoy) + renderSeccion(`Ayer · ${ayer}`, itemsAyer));
-  return envoltorio(soloUnDia ? hoy : 'Hoy', cuerpo);
+  return envoltorio(soloUnDia ? hoy : 'Hoy', cuerpo, soloUnDia ? `/archivo/${hoy}` : '/');
 }
 
 export function renderArchivoIndice(fechas) {
@@ -132,11 +156,39 @@ export function renderArchivoIndice(fechas) {
         .map((f) => `<li><a href="/archivo/${f}">${f}</a></li>`)
         .join('')}</ul></section>`
     : '<section class="seccion"><p class="vacio">Todavía no hay archivo.</p></section>';
-  return envoltorio('Archivo', cuerpo);
+  return envoltorio('Archivo', cuerpo, '/archivo');
 }
 
 export function renderError(mensaje) {
   return envoltorio('Error', `<section class="seccion"><p class="vacio">Algo falló: ${escapar(mensaje)}</p></section>`);
+}
+
+/**
+ * robots.txt del subdominio del radar. Sin esto era un 404: los buscadores
+ * asumen "todo indexable", pero también conviene apuntarles al archivo y
+ * mantener fuera el endpoint de disparo manual.
+ */
+export function renderRobots() {
+  return `User-agent: *
+Allow: /
+Disallow: /ejecutar
+Disallow: /comparar
+
+Sitemap: ${ORIGEN}/sitemap.xml
+`;
+}
+
+/**
+ * Sitemap del radar: la home y cada día de archivo que exista en KV. El
+ * digest no se reconstruye como sitio estático, así que este es el único
+ * sitio donde esa lista existe.
+ */
+export function renderSitemap(fechas) {
+  const urls = [`${ORIGEN}/`, `${ORIGEN}/archivo`, ...fechas.map((f) => `${ORIGEN}/archivo/${f}`)];
+  return `<?xml version="1.0" encoding="utf-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map((u) => `  <url><loc>${escaparXml(u)}</loc></url>`).join('\n')}
+</urlset>`;
 }
 
 /**
@@ -168,6 +220,7 @@ export function renderFeedAtom({ origen, items }) {
   <link href="${origen}/feed.xml" rel="self" />
   <link href="${origen}/" />
   <id>${origen}/</id>
+  <author><name>Espacio Latente</name></author>
   <updated>${new Date(actualizado).toISOString()}</updated>
 ${entradas}
 </feed>`;
