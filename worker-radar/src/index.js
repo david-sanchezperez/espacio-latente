@@ -26,7 +26,7 @@ import { resumir, esReleaseSignificativo, generarPanorama } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap } from './paginas.js';
 import { ARCHIVO, COLA, DESCARTADOS, MEMORIA, PRESUPUESTO } from './config.js';
-import { crearContadorSubrequests, registrarMetaPasada, registrarDedup } from './costes.js';
+import { crearContadorSubrequests, registrarMetaPasada, registrarDedup, resumenDia } from './costes.js';
 import { generarEmbeddings, buscarVecinos, guardarVectores, clasificarVecinos } from './memoria.js';
 
 const TTL_DIA = ARCHIVO.TTL_DIA_SEGUNDOS;
@@ -267,7 +267,8 @@ async function paginaHoy(env) {
   const itemsHoy = await leerDia(env, hoy);
   const itemsAyer = await leerDia(env, ayer);
   const panoramaHoy = await env.RADAR_KV.get(`radar:panorama:${hoy}`);
-  return new Response(renderDigest({ hoy, ayer, itemsHoy, itemsAyer, panoramaHoy }), {
+  const costesHoy = await resumenDia(env, hoy);
+  return new Response(renderDigest({ hoy, ayer, itemsHoy, itemsAyer, panoramaHoy, costesHoy }), {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
 }
@@ -275,8 +276,9 @@ async function paginaHoy(env) {
 async function paginaDia(env, fecha) {
   const items = await leerDia(env, fecha);
   const panoramaHoy = await env.RADAR_KV.get(`radar:panorama:${fecha}`);
+  const costesHoy = await resumenDia(env, fecha);
   return new Response(
-    renderDigest({ hoy: fecha, ayer: null, itemsHoy: items, itemsAyer: [], soloUnDia: true, panoramaHoy }),
+    renderDigest({ hoy: fecha, ayer: null, itemsHoy: items, itemsAyer: [], soloUnDia: true, panoramaHoy, costesHoy }),
     { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
 }

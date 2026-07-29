@@ -92,8 +92,21 @@ npx wrangler vectorize create radar-memoria --dimensions=1024 --metric=cosine
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put RADAR_SECRET             # protege /ejecutar y /comparar
 npx wrangler secret put ALERTA_WEBHOOK           # opcional: aviso si falla una pasada entera
-npx wrangler deploy
 ```
+
+Y para desplegar, desde la raíz del repo:
+
+```bash
+npm run desplegar:radar
+```
+
+> **No uses `npx wrangler deploy` a secas para el radar**, ni siquiera desde
+> `worker-radar/`. Wrangler encuentra antes el `wrangler.jsonc` de la raíz
+> —que es el del sitio estático— que el `wrangler.toml` de la carpeta, y lo
+> que sube son los assets de `dist/` **sin ningún binding**, encima del
+> Worker del radar. El script de arriba pasa `--config` explícito. Si
+> despliegas a mano, comprueba antes con `--dry-run` que salen los cinco
+> bindings (KV, Queue, D1, Vectorize, AI).
 
 Disparo manual de una pasada (el resultado se ve en el digest y en D1, no en
 la respuesta — el trabajo real ocurre en la cola):

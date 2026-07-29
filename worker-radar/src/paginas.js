@@ -48,6 +48,10 @@ const ESTILO = `
   }
   .panorama p { font-size: 0.98rem; }
   .vacio { color: var(--acero); font-style: italic; padding: 1rem 0; }
+  .coste {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.72rem;
+    color: var(--acero); padding-top: 0.9rem; max-width: 60ch;
+  }
   footer { border-top: 1px solid var(--borde); padding: 2rem 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.8rem; color: var(--acero); }
   .archivo-lista { list-style: none; }
   .archivo-lista li { border-bottom: 1px solid var(--borde); padding: 0.7rem 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
@@ -132,21 +136,37 @@ function renderPieza(item) {
   </article>`;
 }
 
-function renderSeccion(titulo, items) {
+/** `pie` es contenido opcional que va dentro de la sección, tras las piezas (ver `renderCoste`). */
+function renderSeccion(titulo, items, pie = '') {
   const cuerpo = items.length
     ? items.map(renderPieza).join('')
     : '<p class="vacio">Nada nuevo en este tramo.</p>';
-  return `<section class="seccion"><h2>${escapar(titulo)}</h2>${cuerpo}</section>`;
+  return `<section class="seccion"><h2>${escapar(titulo)}</h2>${cuerpo}${pie}</section>`;
 }
 
-export function renderDigest({ hoy, ayer, itemsHoy, itemsAyer, soloUnDia, panoramaHoy }) {
+/**
+ * Línea informativa de lo que costó construir el día. Cubre solo las llamadas
+ * a modelos de lenguaje que el pipeline contabiliza (relevancia/resumen y
+ * panorama): ni los embeddings de la memoria semántica ni la infraestructura
+ * de Cloudflare entran en esta cifra, y por eso el texto dice "en modelos" y
+ * no "el radar". Sin datos (día viejo, o D1 caído) no se pinta nada.
+ */
+function renderCoste(costes) {
+  if (!costes) return '';
+  const miles = (n) => n.toLocaleString('es-ES');
+  const usd = costes.costeUsd < 0.0001 ? '<0,0001' : costes.costeUsd.toFixed(4).replace('.', ',');
+  return `<p class="coste">Construir este día costó ${miles(costes.tokensIn)} tokens de entrada
+    y ${miles(costes.tokensOut)} de salida en ${miles(costes.llamadas)} llamadas a modelos — unos ${usd} $.</p>`;
+}
+
+export function renderDigest({ hoy, ayer, itemsHoy, itemsAyer, soloUnDia, panoramaHoy, costesHoy }) {
   const panorama = panoramaHoy
     ? `<section class="panorama"><h2>Panorama de hoy</h2><p>${escapar(panoramaHoy)}</p></section>`
     : '';
   const cuerpo =
     panorama + (soloUnDia
-      ? renderSeccion(hoy, itemsHoy)
-      : renderSeccion(`Hoy · ${hoy}`, itemsHoy) + renderSeccion(`Ayer · ${ayer}`, itemsAyer));
+      ? renderSeccion(hoy, itemsHoy, renderCoste(costesHoy))
+      : renderSeccion(`Hoy · ${hoy}`, itemsHoy, renderCoste(costesHoy)) + renderSeccion(`Ayer · ${ayer}`, itemsAyer));
   return envoltorio(soloUnDia ? hoy : 'Hoy', cuerpo, soloUnDia ? `/archivo/${hoy}` : '/');
 }
 

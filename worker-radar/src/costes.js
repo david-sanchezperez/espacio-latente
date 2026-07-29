@@ -86,6 +86,38 @@ export async function registrarDedup(env, { pasada, itemLink, clasificacion, sim
   }
 }
 
+/**
+ * Lo que costó construir el digest de un día: suma de las dos pasadas (`-am`
+ * y `-pm`) y de cualquier `-manual` de esa fecha, porque `pasada` empieza
+ * siempre por la fecha ISO. Solo filas con modelo — las de `meta_pasada` y
+ * `dedup_semantica` llevan coste 0 y solo inflarían el conteo de llamadas.
+ *
+ * Es para pintar una línea informativa en el pie de la página, así que un
+ * fallo de D1 devuelve null y la página se sirve igual, sin la línea.
+ */
+export async function resumenDia(env, fecha) {
+  try {
+    const fila = await env.RADAR_DB.prepare(
+      `SELECT SUM(tokens_in) AS tokens_in, SUM(tokens_out) AS tokens_out,
+              SUM(coste_usd) AS coste_usd, COUNT(*) AS llamadas
+         FROM radar_llamadas_llm
+        WHERE modelo IS NOT NULL AND pasada LIKE ?`
+    )
+      .bind(`${fecha}%`)
+      .first();
+    if (!fila || !fila.llamadas) return null;
+    return {
+      tokensIn: fila.tokens_in || 0,
+      tokensOut: fila.tokens_out || 0,
+      costeUsd: fila.coste_usd || 0,
+      llamadas: fila.llamadas,
+    };
+  } catch (err) {
+    console.error(`[radar] fallo leyendo resumen de coste de ${fecha}: ${err.message}`);
+    return null;
+  }
+}
+
 /** Fila de resumen al cierre de una pasada — mismo D1, proposito: 'meta_pasada'. */
 export async function registrarMetaPasada(env, { pasada, subrequestsTotal, itemsProcesados, duracionMs }) {
   try {
