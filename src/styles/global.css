@@ -508,6 +508,133 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .pipeline-demo-flecha { display: none; }
 }
 
+/* --- Figuras con SVG inline (diagramas de los artículos) --- */
+.fig-svg {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin: 1.8rem 0;
+  overflow-x: auto;
+}
+.fig-svg svg { display: block; width: 100%; height: auto; min-width: 460px; }
+.fig-svg figcaption {
+  margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid var(--borde);
+  font-family: var(--f-mono); font-size: 0.78rem; color: var(--acero); line-height: 1.5;
+}
+.fig-svg figcaption code { font-size: 0.95em; }
+
+/* --- Demo interactiva de BPE paso a paso (tokenización) --- */
+.tok-demo {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 1.5rem;
+  font-family: var(--f-mono);
+}
+.tok-demo-palabras { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1.1rem; }
+.tok-demo-palabras button {
+  font-family: var(--f-mono); font-size: 0.76rem; color: var(--acero);
+  background: var(--grafito); border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.35rem 0.7rem; cursor: pointer;
+}
+.tok-demo-palabras button:hover { border-color: var(--acero); }
+.tok-demo-palabras button.is-active { color: var(--ambar); border-color: var(--ambar); }
+.tok-demo-tokens { display: flex; gap: 0.35rem; flex-wrap: wrap; min-height: 2.4rem; align-items: center; }
+.tok-chip {
+  display: inline-block; background: var(--grafito);
+  border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.35rem 0.55rem; font-size: 0.85rem; color: var(--acero);
+  transition: all 0.2s ease; white-space: pre;
+}
+.tok-chip.is-fusionado { color: var(--ambar); border-color: var(--ambar); }
+.tok-chip.is-real { color: var(--hueso); border-color: var(--borde); margin: 0.12rem 0.2rem 0.12rem 0; }
+.tok-demo-regla {
+  margin-top: 0.9rem; font-size: 0.8rem; color: var(--ambar); min-height: 1.4rem;
+}
+.tok-demo-controles { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; }
+.tok-demo-controles button {
+  font-family: var(--f-mono); font-size: 0.8rem; color: var(--hueso);
+  background: var(--grafito); border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.4rem 0.9rem; cursor: pointer;
+}
+.tok-demo-controles button:hover:not(:disabled) { border-color: var(--acero); }
+.tok-demo-controles button:disabled { opacity: 0.4; cursor: default; }
+.tok-demo-out {
+  margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--borde); font-size: 0.9rem;
+}
+.tok-demo-out code { color: var(--led-verde); }
+
+/* --- Tabla de troceados reales (tiktoken) --- */
+.tok-real {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 1.5rem;
+  font-family: var(--f-mono);
+  overflow-x: auto; /* la columna de texto va en nowrap: que desborde el panel, no la página */
+}
+.tok-real-controles { display: flex; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.tok-real-controles button {
+  font-family: var(--f-mono); font-size: 0.78rem; color: var(--acero);
+  background: var(--grafito); border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.4rem 0.8rem; cursor: pointer;
+}
+.tok-real-controles button:hover { border-color: var(--acero); }
+.tok-real-controles button.is-active { color: var(--ambar); border-color: var(--ambar); }
+.tok-real-tabla { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.tok-real-tabla th {
+  text-align: left; color: var(--acero); font-weight: 500; font-size: 0.7rem;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 0 0.5rem 0.5rem 0; border-bottom: 1px solid var(--borde);
+}
+.tok-real-tabla td { padding: 0.45rem 0.5rem 0.45rem 0; border-bottom: 1px solid var(--borde); vertical-align: middle; }
+.tok-real-tabla .num { text-align: right; width: 4rem; color: var(--acero); }
+.tok-real-tabla .num.is-bueno { color: var(--led-verde); }
+.tok-real-tabla .num.is-malo { color: var(--ambar); }
+.tok-real-texto { color: var(--hueso); white-space: nowrap; padding-right: 1rem !important; }
+.tok-real-nota { margin-top: 0.9rem; font-size: 0.8rem; color: var(--acero); line-height: 1.5; }
+
+/* --- Demo comparativa de arquitecturas de agente (loop / grafo / harness) --- */
+.arq-demo {
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 1.5rem;
+  font-family: var(--f-mono);
+}
+.arq-demo-escenarios { display: flex; gap: 0.5rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+.arq-demo-escenarios button {
+  font-family: var(--f-mono); font-size: 0.76rem; color: var(--acero);
+  background: var(--grafito); border: 1px solid var(--borde); border-radius: 3px;
+  padding: 0.4rem 0.8rem; cursor: pointer;
+}
+.arq-demo-escenarios button:hover { border-color: var(--acero); }
+.arq-demo-escenarios button.is-active { color: var(--ambar); border-color: var(--ambar); }
+.arq-demo-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
+.arq-col {
+  background: var(--grafito); border: 1px solid var(--borde);
+  border-radius: 3px; padding: 0.8rem 0.9rem; display: flex; flex-direction: column;
+}
+.arq-col-titulo {
+  color: var(--ambar); font-size: 0.7rem; letter-spacing: 0.1em;
+  padding-bottom: 0.5rem; margin-bottom: 0.6rem; border-bottom: 1px solid var(--borde);
+}
+.arq-pasos { list-style: none; margin: 0; padding: 0; flex: 1; }
+.arq-pasos li {
+  font-size: 0.72rem; color: var(--acero); line-height: 1.45;
+  padding: 0.22rem 0 0.22rem 0.85rem; position: relative;
+  animation: arq-entra 0.28s ease both;
+}
+.arq-pasos li::before { content: '›'; position: absolute; left: 0; color: var(--borde); }
+@keyframes arq-entra { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .arq-pasos li { animation: none; } }
+.arq-veredicto {
+  margin-top: 0.7rem; padding-top: 0.6rem; border-top: 1px solid var(--borde);
+  font-size: 0.72rem; line-height: 1.45;
+}
+.arq-veredicto.is-ok { color: var(--led-verde); }
+.arq-veredicto.is-medio { color: var(--ambar); }
+.arq-veredicto.is-mal { color: #e8836b; }
+.arq-demo-nota {
+  margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--borde);
+  font-size: 0.8rem; color: var(--acero); line-height: 1.55;
+}
+@media (max-width: 700px) {
+  .arq-demo-cols { grid-template-columns: 1fr; }
+}
+
 /* --- Buzón --- */
 .buzon { padding: 0 0 5rem; }
 .buzon form { display: grid; gap: 0.9rem; max-width: 540px; }
