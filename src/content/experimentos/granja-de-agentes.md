@@ -117,13 +117,84 @@ Aquí entra un principio que ya se aplicó en otro proyecto de esta casa: **mant
 
 Con eso resuelto: dos agentes de memoria activos (`espacio-latente`, `ai-trading-lab`, uno por proyecto), probados de punta a punta con datos reales, y con persistencia — sobreviven a un reinicio del sobremesa sin que nadie tenga que iniciar sesión.
 
+<figure class="fig-svg">
+<svg viewBox="0 0 720 210" role="img" aria-label="Pila de memanto en el sobremesa: Ollama sirve embeddings y LLM al motor Moorcheh en Docker, que a su vez sirve la API REST de memanto; el orquestador consulta por HTTP; los tres procesos sobreviven a un reinicio">
+  <g font-family="IBM Plex Mono, monospace" font-size="11">
+    <rect x="8" y="8" width="704" height="150" rx="4" fill="#161a20" stroke="#3a4048" stroke-dasharray="3 3"/>
+    <text x="24" y="26" fill="#5c6b7a" font-size="9" letter-spacing="1">SOBREMESA (192.168.1.32) · systemd --user, persiste tras reinicio</text>
+    <rect x="24" y="40" width="150" height="72" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+    <text x="38" y="60" fill="#e9e5da" font-size="12">OLLAMA</text>
+    <text x="38" y="76" fill="#8a97a5" font-size="9">:11434 (0.0.0.0)</text>
+    <text x="38" y="90" fill="#5c6b7a" font-size="8">nomic-embed-text</text>
+    <text x="38" y="102" fill="#5c6b7a" font-size="8">qwen2.5</text>
+    <line x1="174" y1="76" x2="216" y2="76" stroke="#8a97a5" marker-end="url(#arr2)"/>
+    <rect x="218" y="40" width="180" height="72" rx="4" fill="#1a1f26" stroke="#7adb8f"/>
+    <text x="232" y="60" fill="#7adb8f" font-size="12">MOTOR MOORCHEH</text>
+    <text x="232" y="76" fill="#8a97a5" font-size="9">:8090 (Docker)</text>
+    <text x="232" y="90" fill="#5c6b7a" font-size="8">restart: unless-stopped</text>
+    <text x="232" y="102" fill="#5c6b7a" font-size="8">Apache-2.0</text>
+    <line x1="398" y1="76" x2="440" y2="76" stroke="#8a97a5" marker-end="url(#arr2)"/>
+    <rect x="442" y="40" width="180" height="72" rx="4" fill="#1a1f26" stroke="#ffb454"/>
+    <text x="456" y="60" fill="#ffb454" font-size="12">MEMANTO API</text>
+    <text x="456" y="76" fill="#8a97a5" font-size="9">:8000 (memanto.service)</text>
+    <text x="456" y="90" fill="#5c6b7a" font-size="8">remember · recall · answer</text>
+    <text x="456" y="102" fill="#5c6b7a" font-size="8">linger activo, sin login</text>
+    <line x1="622" y1="76" x2="660" y2="76" stroke="#ffb454" stroke-dasharray="2 3" marker-end="url(#arr2)"/>
+    <text x="626" y="130" fill="#8a97a5" font-size="9">orquestador</text>
+    <text x="626" y="142" fill="#5c6b7a" font-size="8">HTTP :8000</text>
+    <defs>
+      <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#8a97a5"/>
+      </marker>
+    </defs>
+  </g>
+</svg>
+<figcaption>Tres procesos encadenados, cada uno con su propia persistencia (systemd de sistema, política de reinicio de Docker, systemd de usuario con linger) — ninguno depende de que yo tenga sesión iniciada.</figcaption>
+</figure>
+
 ## Un auditor de deuda como parte del ciclo, no como extra
 
 Después de cerrar las cuatro piezas, hice a mano un barrido de código muerto sobre `agent-loops` — exports sin caller, tests huérfanos. Encontré unas cuantas cosas. Luego probé [ponytail](https://github.com/DietrichGebert/ponytail), un plugin de Claude Code que fuerza una disciplina de "el código que nunca se escribe no hay que mantenerlo" y trae un comando de auditoría de todo el repo (`/ponytail-audit`). Lo corrí sobre el mismo repo que ya había mirado a mano, y encontró cosas que a mí se me habían escapado — incluida una duplicación que yo mismo acababa de introducir esa misma tarde (dos funciones casi idénticas para la misma condición, una en `dispatcher.js` y otra en `status-renderer.js`, en vez de una sola en `board.js`).
 
 Cada hallazgo se verificó antes de tocar nada — que de verdad no tuviera caller, que los tests siguieran en verde después del cambio — y solo entonces se aplicó. Sin eso, "auditoría automática" es solo una lista de sugerencias sin criterio.
 
-La conclusión práctica: esto no es una herramienta que se prueba una vez y se archiva, es un paso que tiene sentido repetir cada vez que el código crece — así que pasa a formar parte del ciclo de trabajo de este proyecto, no de una sesión suelta.
+La conclusión práctica: esto no es una herramienta que se prueba una vez y se archiva, es un paso que tiene sentido repetir cada vez que el código crece — así que pasa a formar parte del ciclo de trabajo de este proyecto, no de una sesión suelta. Un timer de `systemd` de usuario (domingos 21:00, el mismo patrón que ya usaba para la revisión diaria de `ai-trading-lab`) lo dispara solo, repo por repo:
+
+<figure class="fig-svg">
+<svg viewBox="0 0 720 190" role="img" aria-label="Ciclo de higiene semanal: audita, verifica cada hallazgo a mano, mide tests antes y después, y solo aplica si no hay regresión; siempre commit local, nunca push">
+  <g font-family="IBM Plex Mono, monospace" font-size="11">
+    <rect x="4" y="20" width="118" height="44" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+    <text x="16" y="38" fill="#e9e5da" font-size="10">ponytail-audit</text>
+    <text x="16" y="52" fill="#8a97a5" font-size="8">repo completo</text>
+    <line x1="122" y1="42" x2="152" y2="42" stroke="#8a97a5" marker-end="url(#arr3)"/>
+    <rect x="154" y="20" width="118" height="44" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+    <text x="166" y="38" fill="#e9e5da" font-size="10">verificar a mano</text>
+    <text x="166" y="52" fill="#8a97a5" font-size="8">grep de callers reales</text>
+    <line x1="272" y1="42" x2="302" y2="42" stroke="#8a97a5" marker-end="url(#arr3)"/>
+    <rect x="304" y="20" width="118" height="44" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+    <text x="316" y="38" fill="#e9e5da" font-size="10">tests: baseline</text>
+    <text x="316" y="52" fill="#8a97a5" font-size="8">antes de tocar nada</text>
+    <line x1="422" y1="42" x2="452" y2="42" stroke="#8a97a5" marker-end="url(#arr3)"/>
+    <rect x="454" y="20" width="118" height="44" rx="4" fill="#1a1f26" stroke="#2c333d"/>
+    <text x="466" y="38" fill="#e9e5da" font-size="10">aplicar + tests</text>
+    <text x="466" y="52" fill="#8a97a5" font-size="8">¿misma cobertura?</text>
+    <line x1="513" y1="64" x2="513" y2="96" stroke="#8a97a5" marker-end="url(#arr3)"/>
+    <path d="M470,100 L556,100 L513,138 Z" fill="none" stroke="#5c6b7a"/>
+    <text x="513" y="115" fill="#8a97a5" font-size="8" text-anchor="middle">¿regresión?</text>
+    <line x1="470" y1="118" x2="330" y2="118" stroke="#ff8a8a" marker-end="url(#arrred)"/>
+    <text x="336" y="112" fill="#ff8a8a" font-size="8">sí → revertir</text>
+    <line x1="513" y1="138" x2="513" y2="160" stroke="#7adb8f" marker-end="url(#arrgreen)"/>
+    <rect x="404" y="162" width="220" height="26" rx="4" fill="#1a1f26" stroke="#7adb8f"/>
+    <text x="416" y="180" fill="#7adb8f" font-size="10">no → commit local (nunca push)</text>
+    <defs>
+      <marker id="arr3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8a97a5"/></marker>
+      <marker id="arrred" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ff8a8a"/></marker>
+      <marker id="arrgreen" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7adb8f"/></marker>
+    </defs>
+  </g>
+</svg>
+<figcaption>Primera ejecución real (2026-08-03): 6 repos auditados, 5 commits locales aplicados en 3 de ellos, 0 pushes. Un flag muerto de ~1200 líneas se detectó y se dejó anotado para revisión manual en vez de tocarlo sin supervisión — borrar un subsistema entero no es una decisión para un cron.</figcaption>
+</figure>
 
 ## Lo que sigue sin decidir, a propósito
 
