@@ -30,17 +30,16 @@ Esta bitácora cuenta cómo está montado hoy, qué decisiones se han tomado y p
     <rect x="132" y="202" width="340" height="46" rx="4" fill="#1a1f26" stroke="#2c333d"/>
     <text x="148" y="222" fill="#e9e5da" font-size="12">DISPATCHER</text>
     <text x="148" y="238" fill="#8a97a5" font-size="9">tick cada 30s: promociona, reclama, lanza contenedores</text>
-    <line x1="200" y1="248" x2="200" y2="278" stroke="#8a97a5" marker-end="url(#arr)"/>
-    <line x1="404" y1="248" x2="404" y2="278" stroke="#8a97a5" marker-end="url(#arr)"/>
+    <line x1="302" y1="248" x2="200" y2="277" stroke="#8a97a5" marker-end="url(#arr)"/>
+    <line x1="302" y1="248" x2="500" y2="277" stroke="#8a97a5" marker-end="url(#arr)"/>
     <rect x="60" y="280" width="280" height="50" rx="4" fill="#1a1f26" stroke="#2c333d"/>
     <text x="76" y="300" fill="#e9e5da" font-size="12">MAKER</text>
     <text x="76" y="316" fill="#8a97a5" font-size="9">contenedor Docker · backend/frontend/devops/sre</text>
     <rect x="360" y="280" width="280" height="50" rx="4" fill="#1a1f26" stroke="#7adb8f"/>
     <text x="376" y="300" fill="#7adb8f" font-size="12">CHECKER</text>
     <text x="376" y="316" fill="#8a97a5" font-size="9">contenedor Docker · qa/security, verifica al maker</text>
-    <path d="M340,305 C 470,255 470,255 400,225" fill="none" stroke="#ffb454" stroke-dasharray="2 3"/>
-    <text x="510" y="270" fill="#ffb454" font-size="9">RESULT_JSON:</text>
-    <text x="510" y="282" fill="#5c6b7a" font-size="8">status·summary·learnings·files_changed</text>
+    <line x1="350" y1="279" x2="350" y2="250" stroke="#ffb454" stroke-dasharray="2 3" marker-end="url(#arrorange)"/>
+    <text x="356" y="269" fill="#ffb454" font-size="9">RESULT_JSON:</text>
     <rect x="500" y="102" width="180" height="60" rx="4" fill="#1a1f26" stroke="#7adb8f"/>
     <text x="516" y="124" fill="#7adb8f" font-size="11">MEMANTO</text>
     <text x="516" y="140" fill="#8a97a5" font-size="8">memoria por board, on-prem</text>
@@ -49,10 +48,13 @@ Esta bitácora cuenta cómo está montado hoy, qué decisiones se han tomado y p
       <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
         <path d="M0,0 L6,3 L0,6 Z" fill="#8a97a5"/>
       </marker>
+      <marker id="arrorange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#ffb454"/>
+      </marker>
     </defs>
   </g>
 </svg>
-<figcaption>El camino de una tarea: Telegram → API → board SQLite → dispatcher → contenedor (maker, y opcionalmente checker) → resultado estructurado de vuelta al board. Memanto consulta y escribe memoria por proyecto en cada paso.</figcaption>
+<figcaption>El camino de una tarea: Telegram → API → board SQLite → dispatcher → contenedor (maker, y opcionalmente checker) → resultado estructurado de vuelta al board como <code>RESULT_JSON</code> (<code>status</code>/<code>summary</code>/<code>learnings</code>/<code>files_changed</code>). Memanto consulta y escribe memoria por proyecto en cada paso.</figcaption>
 </figure>
 
 ## La base: un fork, no un proyecto propio
