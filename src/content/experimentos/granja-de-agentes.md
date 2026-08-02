@@ -117,6 +117,14 @@ Aquí entra un principio que ya se aplicó en otro proyecto de esta casa: **mant
 
 Con eso resuelto: dos agentes de memoria activos (`espacio-latente`, `ai-trading-lab`, uno por proyecto), probados de punta a punta con datos reales, y con persistencia — sobreviven a un reinicio del sobremesa sin que nadie tenga que iniciar sesión.
 
+## Un auditor de deuda como parte del ciclo, no como extra
+
+Después de cerrar las cuatro piezas, hice a mano un barrido de código muerto sobre `agent-loops` — exports sin caller, tests huérfanos. Encontré unas cuantas cosas. Luego probé [ponytail](https://github.com/DietrichGebert/ponytail), un plugin de Claude Code que fuerza una disciplina de "el código que nunca se escribe no hay que mantenerlo" y trae un comando de auditoría de todo el repo (`/ponytail-audit`). Lo corrí sobre el mismo repo que ya había mirado a mano, y encontró cosas que a mí se me habían escapado — incluida una duplicación que yo mismo acababa de introducir esa misma tarde (dos funciones casi idénticas para la misma condición, una en `dispatcher.js` y otra en `status-renderer.js`, en vez de una sola en `board.js`).
+
+Cada hallazgo se verificó antes de tocar nada — que de verdad no tuviera caller, que los tests siguieran en verde después del cambio — y solo entonces se aplicó. Sin eso, "auditoría automática" es solo una lista de sugerencias sin criterio.
+
+La conclusión práctica: esto no es una herramienta que se prueba una vez y se archiva, es un paso que tiene sentido repetir cada vez que el código crece — así que pasa a formar parte del ciclo de trabajo de este proyecto, no de una sesión suelta.
+
 ## Lo que sigue sin decidir, a propósito
 
 El runtime que corre dentro de cada contenedor (`iteratr` + `opencode`, hoy) podría cambiar a Claude Code CLI más adelante. Esa decisión se ha dejado fuera a propósito: todo lo construido en esta fase —el protocolo `RESULT_JSON`, el multi-board, la agrupación visual— es agnóstico a qué modelo o runtime hay dentro del contenedor. Si cambia el runtime, solo hace falta que el hook de fin de sesión emita el mismo marcador.
