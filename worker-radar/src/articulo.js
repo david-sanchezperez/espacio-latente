@@ -1,4 +1,5 @@
 import { fetchContado } from './costes.js';
+import { limpiar } from './feed.js';
 
 /**
  * Extracción de texto de artículo completo, para cuando el snippet del RSS
@@ -83,22 +84,10 @@ function parecePlantilla(texto) {
 }
 
 function limpiarParrafo(html) {
-  return html
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+  // <script>/<style> se quitan aparte porque `limpiar` (feed.js) solo pela
+  // etiquetas, no el contenido interno — dejaría JS/CSS como texto literal.
+  const sinScriptNiStyle = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    // Segunda pasada: si el párrafo traía HTML escapado (&lt;p&gt;...), hasta
-    // la línea anterior no era una etiqueta y se habría colado como texto
-    // literal en el resumen. Mismo criterio que `limpiar` en feed.js.
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/<style[\s\S]*?<\/style>/gi, '');
+  return limpiar(sinScriptNiStyle);
 }

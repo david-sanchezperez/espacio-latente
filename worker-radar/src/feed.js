@@ -35,7 +35,7 @@ function extraerLink(bloque) {
   return '';
 }
 
-function limpiar(texto) {
+export function limpiar(texto) {
   return texto
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<[^>]+>/g, ' ') // fuera cualquier HTML embebido en la descripción
