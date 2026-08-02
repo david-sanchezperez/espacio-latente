@@ -1,6 +1,6 @@
 ---
 titulo: "La granja de agentes: un orquestador que reparte tareas entre agentes de código"
-resumen: "Cómo tengo montada la infraestructura que decompone tareas, las reparte entre agentes maker/checker en contenedores Docker, y por qué construirla sobre el fork de un amigo en vez de reescribirla desde cero."
+resumen: "Cómo tengo montada la infraestructura que decompone tareas, las reparte entre agentes maker/checker en contenedores Docker, y por qué construirla sobre el fork de agent-loops (Daniel Fernández) en vez de reescribirla desde cero."
 estado: pruebas
 unidad: "U-11"
 serie: bitacora
@@ -59,7 +59,7 @@ Esta bitácora cuenta cómo está montado hoy, qué decisiones se han tomado y p
 
 ## La base: un fork, no un proyecto propio
 
-La granja está construida sobre [`agent-loops`](https://github.com/danifernandezs/agent-loops), un repo de un amigo que cloné hace tiempo. Antes de construir nada encima me hice la pregunta obvia: ¿lo uso solo porque ya lo tengo clonado, o de verdad aguanta el peso?
+La granja está construida sobre [`agent-loops`](https://github.com/danifernandezs/agent-loops), de [Daniel Fernández](https://github.com/danifernandezs) — un repo suyo que cloné hace tiempo. Antes de construir nada encima me hice la pregunta obvia: ¿lo uso solo porque ya lo tengo clonado, o de verdad aguanta el peso?
 
 La respuesta, tras auditar el código, fue que sí aguanta: ~5.300 líneas repartidas en módulos con una responsabilidad clara cada uno (`board.js`, `dispatcher.js`, `docker-runner.js`, `git-manager.js`, el conector de Telegram), con un test por módulo. No es deuda técnica escondida — es prácticamente la misma arquitectura a la que yo habría llegado: orquestador + cola + runner de Docker + bot. El riesgo real no era la calidad del código, era heredar decisiones de diseño ajenas sin darme cuenta. Ese riesgo se gestiona sobre la marcha, no reescribiendo 5.300 líneas para llegar al mismo sitio.
 
