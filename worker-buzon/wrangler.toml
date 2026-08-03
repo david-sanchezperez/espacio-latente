@@ -1,0 +1,13 @@
+name = "espacio-latente-buzon"
+main = "src/index.js"
+compatibility_date = "2026-07-14"   # alineado con el resto de Workers del proyecto
+
+# La API key de DeepSeek y el secret de Turnstile NO van aquí. Se guardan como secrets:
+#   npx wrangler secret put DEEPSEEK_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET_KEY
+
+# Reutiliza el mismo KV namespace de rate-limiting que worker/ (agente-bio) —
+# prefijos de clave distintos, mismo namespace, no hace falta crear otro.
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "6e17a9f8233e4c029e8080f178b071a9"

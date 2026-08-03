@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import AgenteBio from '../components/AgenteBio.jsx';
+import BuzonChat from '../components/BuzonChat.jsx';
 import TerminalBio from '../components/TerminalBio.jsx';
 import { getCollection } from 'astro:content';
 import { t, type Idioma } from '../i18n/ui';
@@ -266,6 +267,7 @@ const lineasBio =
       <span class="etiqueta">{strings['buzon.eyebrow']}</span>
     </div>
     <p style="margin: 1.25rem 0; color: var(--acero);">{strings['buzon.intro']}</p>
+    <BuzonChat client:visible strings={strings} />
     <form class="form-buzon" action="https://api.web3forms.com/submit" method="POST">
       <input type="hidden" name="access_key" value="cab570f5-1090-4775-8faf-c75881ba1832" />
       <input type="text" name="nombre" placeholder={strings['buzon.nombre']} />

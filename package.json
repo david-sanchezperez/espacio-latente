@@ -8,7 +8,8 @@
     "preview": "astro preview",
     "test": "node --test worker-radar/test/*.test.mjs",
     "probar:articulo": "node worker-radar/scripts/probar-articulo.mjs",
-    "desplegar:radar": "npx wrangler deploy --config worker-radar/wrangler.toml"
+    "desplegar:radar": "npx wrangler deploy --config worker-radar/wrangler.toml",
+    "desplegar:buzon": "npx wrangler deploy --config worker-buzon/wrangler.toml"
   },
   "dependencies": {
     "@astrojs/react": "^4.0.0",
