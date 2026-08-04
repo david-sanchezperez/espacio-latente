@@ -13,6 +13,7 @@ export default function BuzonChat({ strings }) {
   const [error, setError] = useState(null);
   const [cerrada, setCerrada] = useState(false);
   const [resumen, setResumen] = useState(null);
+  const [foraTema, setForaTema] = useState(false);
   const [tokenListo, setTokenListo] = useState(false);
 
   const widgetIdRef = useRef(null);
@@ -22,8 +23,10 @@ export default function BuzonChat({ strings }) {
 
   const turnosUsuario = mensajes.filter((m) => m.role === 'user').length;
   // "cerrada" (la IA propuso un resumen) NO bloquea el chat — el visitante
-  // puede seguir matizando. Solo el tope real de turnos lo bloquea.
+  // puede seguir matizando. Solo el tope real de turnos o un mensaje fuera
+  // de tema (intencional, ver worker) lo bloquean.
   const limiteAlcanzado = turnosUsuario >= MAX_TURNOS;
+  const bloqueada = limiteAlcanzado || foraTema;
 
   // Carga el script de Turnstile una sola vez y renderiza el widget.
   useEffect(() => {
@@ -60,7 +63,7 @@ export default function BuzonChat({ strings }) {
 
   async function mandar() {
     const contenido = texto.trim();
-    if (!contenido || enviando || limiteAlcanzado || !tokenRef.current) return;
+    if (!contenido || enviando || bloqueada || !tokenRef.current) return;
 
     const nuevos = [...mensajes, { role: 'user', content: contenido }];
     setMensajes(nuevos);
@@ -93,6 +96,9 @@ export default function BuzonChat({ strings }) {
       if (datos.cerrada) {
         setCerrada(true);
         setResumen(datos.resumen);
+      }
+      if (datos.foraTema) {
+        setForaTema(true);
       }
     } catch {
       setError(t('buzon.chat.error'));
@@ -135,8 +141,8 @@ export default function BuzonChat({ strings }) {
         </button>
       )}
 
-      {limiteAlcanzado ? (
-        <p style={estilos.aviso}>{t('buzon.chat.limite')}</p>
+      {bloqueada ? (
+        <p style={estilos.aviso}>{t(foraTema ? 'buzon.chat.foraTema' : 'buzon.chat.limite')}</p>
       ) : (
         <div style={estilos.fila}>
           <input

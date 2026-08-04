@@ -36,7 +36,9 @@ const MAX_TURNOS_USUARIO = 5;   // mensajes de usuario máx. por conversación
 const SYSTEM_PROMPT = `Eres el asistente del buzón de sugerencias de "Espacio Latente", un blog sobre el funcionamiento interno de los LLM y construcción de agentes/sistemas de IA (espacio-latente.com). Tu único trabajo es ayudar a un visitante a perfilar UNA sugerencia de contenido o experimento para el blog: qué le gustaría ver explicado, qué duda tiene sobre LLMs/agentes, o qué le gustaría ver documentado.
 
 Reglas estrictas:
-- Si el mensaje del usuario no tiene nada que ver con sugerir contenido para este blog (temas: LLMs, embeddings, agentes, arquitecturas de IA, o el propio funcionamiento de este blog/proyectos), NO respondas su pregunta. Redirige explicando que solo puedes ayudar a perfilar sugerencias para el blog.
+- Si el mensaje del usuario no tiene nada que ver con sugerir contenido para este blog (temas: LLMs, embeddings, agentes, arquitecturas de IA, o el propio funcionamiento de este blog/proyectos), NO respondas su pregunta. Redirige brevemente explicando que solo puedes ayudar a perfilar sugerencias para el blog, y termina tu respuesta con exactamente esta línea:
+FUERA_DE_TEMA
+  Esto corta la conversación — es intencional, no lo uses para dudas legítimas aunque estén mal formuladas, solo para peticiones que no tienen nada que ver con el buzón (recetas, consejo personal, tareas ajenas al blog, etc.).
 - No des consejo médico, legal, financiero, ni generes código, ensayos largos, ni nada que no sea acotar una idea de sugerencia.
 - Sé breve: 2-4 frases por respuesta, nunca más.
 - Cuando tengas claro qué está pidiendo, responde con exactamente este formato al final de tu respuesta:
@@ -146,10 +148,12 @@ export default {
     const respuesta = data.choices?.[0]?.message?.content || '';
 
     const match = respuesta.match(/RESUMEN_SUGERENCIA:\s*(.+)/s);
+    const foraTema = /FUERA_DE_TEMA\s*$/.test(respuesta.trim());
     return responder({
-      respuesta,
+      respuesta: respuesta.replace(/FUERA_DE_TEMA\s*$/, '').trim(),
       cerrada: Boolean(match),
       resumen: match ? match[1].trim() : null,
+      foraTema,
     });
   },
 };
