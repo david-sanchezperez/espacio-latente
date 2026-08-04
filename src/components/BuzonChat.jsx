@@ -21,7 +21,9 @@ export default function BuzonChat({ strings }) {
   const finRef = useRef(null);
 
   const turnosUsuario = mensajes.filter((m) => m.role === 'user').length;
-  const limiteAlcanzado = cerrada || turnosUsuario >= MAX_TURNOS;
+  // "cerrada" (la IA propuso un resumen) NO bloquea el chat — el visitante
+  // puede seguir matizando. Solo el tope real de turnos lo bloquea.
+  const limiteAlcanzado = turnosUsuario >= MAX_TURNOS;
 
   // Carga el script de Turnstile una sola vez y renderiza el widget.
   useEffect(() => {
@@ -127,14 +129,14 @@ export default function BuzonChat({ strings }) {
 
       {error && <p style={estilos.errorTexto}>{error}</p>}
 
+      {cerrada && resumen && (
+        <button type="button" style={estilos.botonResumen} onClick={usarResumen}>
+          {t('buzon.chat.usarResumen')}
+        </button>
+      )}
+
       {limiteAlcanzado ? (
-        cerrada && resumen ? (
-          <button type="button" style={estilos.botonResumen} onClick={usarResumen}>
-            {t('buzon.chat.usarResumen')}
-          </button>
-        ) : (
-          <p style={estilos.aviso}>{t('buzon.chat.limite')}</p>
-        )
+        <p style={estilos.aviso}>{t('buzon.chat.limite')}</p>
       ) : (
         <div style={estilos.fila}>
           <input
@@ -189,6 +191,7 @@ const estilos = {
   botonResumen: {
     background: 'transparent', border: '1px solid #7adb8f', color: '#7adb8f',
     padding: '0.55rem 0.9rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.85rem', width: '100%',
+    marginBottom: '0.6rem',
   },
   aviso: { fontSize: '0.82rem', color: '#8a97a5' },
   errorTexto: { fontSize: '0.82rem', color: '#ff8a8a', marginBottom: '0.5rem' },
