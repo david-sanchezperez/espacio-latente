@@ -161,6 +161,7 @@ const lineasBio =
   <section class="hero">
     <p class="etiqueta">// espacio-latente.com</p>
     <h1>{strings['hero.titulo1']}<br /><span class="ambar">{strings['hero.titulo2']}</span></h1>
+    <p class="hero-subtitulo">{strings['hero.subtitulo']}</p>
     <div style="margin-top: 1.75rem;">
       <TerminalBio client:load lineas={lineasBio} />
     </div>
@@ -177,6 +178,7 @@ const lineasBio =
       <h2>{strings['rack.titulo']}</h2>
       <span class="etiqueta">{strings['rack.contador'](totalModulos)}</span>
     </div>
+    <p class="serie-nota">{strings['rack.nota']}</p>
 
     {modulosPorSerie.map((serie) => (
       <div class="serie">
