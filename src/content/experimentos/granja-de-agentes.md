@@ -2,7 +2,7 @@
 titulo: "La granja de agentes: un orquestador que reparte tareas entre agentes de código"
 resumen: "Cómo tengo montada la infraestructura que decompone tareas, las reparte entre agentes maker/checker en contenedores Docker, y por qué construirla sobre el fork de agent-loops (Daniel Fernández) en vez de reescribirla desde cero."
 estado: pruebas
-unidad: "U-11"
+unidad: "U-12"
 serie: bitacora
 fecha: 2026-08-02
 ---
