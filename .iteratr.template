@@ -1,0 +1,42 @@
+# Agent Task: {{session}} | Iteration #{{iteration}}
+
+## Context
+{{history}}
+
+## Task
+{{spec}}
+
+## Status
+{{tasks}}
+
+## Notes
+{{notes}}
+
+## Rules
+- ONE task per iteration - complete fully, then STOP
+- Test changes before marking complete
+- End your final message with the RESULT_JSON block below — do not stop without it
+- Follow existing code patterns
+- If stuck: add note with type "stuck"
+
+## Workflow
+1. Read worker context and understand existing code
+2. Pick the assigned task
+3. Implement incrementally, testing as you go
+4. Run lint and tests
+5. Emit the RESULT_JSON block
+6. STOP
+
+## Result protocol
+Your final message MUST end with this exact block, and nothing after it:
+
+RESULT_JSON:
+{"status":"success|failure","summary":"one-line summary of what you did","learnings":["short reusable facts worth remembering next time, or omit"],"files_changed":["path/one","path/two"]}
+
+- `status`: "success" only if the task's acceptance criteria are met.
+- `summary`: what changed and why, one line.
+- `learnings`: gotchas, conventions, or decisions worth remembering for future tasks on this project — `[]` if none.
+- `files_changed`: repo-relative paths you created or modified.
+- The JSON must be valid and on a single line right after the `RESULT_JSON:` marker.
+
+{{extra}}
