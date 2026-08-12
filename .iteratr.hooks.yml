@@ -1,0 +1,16 @@
+version: 1
+hooks:
+  session_start:
+    - command: "git pull --rebase 2>&1 || true"
+      timeout: 30
+  pre_iteration:
+    - command: "if [ -f package.json ]; then npm run lint --if-present 2>&1 || true; elif [ -f requirements.txt ]; then ruff check . 2>&1 || true; fi"
+      timeout: 30
+      pipe_output: true
+  post_iteration:
+    - command: "if [ -f package.json ]; then npm test --if-present 2>&1 || true; elif [ -f requirements.txt ]; then python -m pytest -x --tb=short 2>&1 || true; fi"
+      timeout: 120
+      pipe_output: true
+  session_end:
+    - command: "git add -A && git diff --cached --quiet || git commit -m 'feat: automated agent changes' --no-verify 2>&1 || true"
+      timeout: 15
