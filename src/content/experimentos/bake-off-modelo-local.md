@@ -1,6 +1,6 @@
 ---
 titulo: "El bake-off del modelo local: 5 candidatos, 3 fallos silenciosos, 1 ganador"
-resumen: "GLM-5.2 se quedó sin saldo como maker de la granja de agentes. Construir una comparativa justa entre 5 modelos locales destapó un fallo que no era de los modelos — y terminó en un modelo gratuito empatando con Claude Sonnet 5."
+resumen: "GLM-5.2 se quedó sin saldo como maker de la granja de agentes. Construir una comparativa justa entre 5 modelos locales destapó un fallo que no era de los modelos — y terminó en un modelo gratuito a la altura de Claude Sonnet 5 en el harness, con matices en producción."
 estado: pruebas
 unidad: "U-13"
 serie: bitacora
@@ -110,7 +110,7 @@ Con eso resuelto, la comparativa que importa es Devstral y Glimmer-30B (los dos 
 | Glimmer-30B | 30/30 | 5/6 (4.8 turnos) | 0.21s | 52.1 |
 | *glm-5.2* (referencia, API) | 30/30 | 5/6 (3.7 turnos) | 4.0s | 119.0 |
 
-Devstral iguala en código y **supera** a GLM-5.2 en tasa de éxito de agente, con un TTFT casi 90 veces mejor por no tener que salir a internet. Gratis, en mi propia GPU. Contrastado también contra Claude Sonnet 5 y DeepSeek V4 Flash en una pasada final con el harness completo, Devstral empata con ambos en código y agente (6/6 los tres) — pierde en tok/s frente a infraestructura de datacenter (52.7 contra 97-101), lo esperable comparando una tarjeta doméstica contra la nube, y gana de largo en latencia por la misma razón que gana el resto: sin red de por medio.
+Devstral iguala en código y **supera** a GLM-5.2 en tasa de éxito de agente, con un TTFT casi 90 veces mejor por no tener que salir a internet. Gratis, en mi propia GPU. Contrastado también contra Claude Sonnet 5 y DeepSeek V4 Flash en una pasada final con el harness completo, Devstral saca el mismo marcador que ambos en este harness acotado (6/6 los tres, 6 tareas de agente) — pierde en tok/s frente a infraestructura de datacenter (52.7 contra 97-101), lo esperable comparando una tarjeta doméstica contra la nube, y gana de largo en latencia por la misma razón que gana el resto: sin red de por medio. Ojo: "empata con Sonnet 5" es una frase que pesa más de lo que el dato sostiene — son 6 tareas cortas del harness, no producción; ver la actualización al final del post.
 
 ## Más bits no siempre es mejor: la lección que se repitió al revés
 
@@ -141,3 +141,11 @@ Mismo margen de VRAM, el doble de contexto útil, calidad idéntica, ~9% menos t
 `llama-server.service` sirve hoy `Devstral-Small-2-24B-Instruct-2512` en `Q4_K_M`, caché KV en 8 bits, 64K de contexto. `MAKER_MODEL=devstral` en `agent-loops`. De paso, dos cosas más que salieron a la luz montando todo esto: `agent-loops` reintentaba una tarea hasta agotar el cupo si el LLM local estaba caído durante un cambio de modelo, en vez de esperar sin penalizar — ahora comprueba el backend antes de gastar un intento; y LiteLLM corría como proceso suelto sin las variables de entorno persistidas, así que un reinicio manual le hacía perder las claves de las APIs de pago — ahora es un servicio de systemd de verdad, con `EnvironmentFile`.
 
 Todo el código —el script del bake-off, el parser de fallback con su self-check, y la bitácora completa con más detalle del que cabe aquí— está en [local-llm-arena](https://github.com/david-sanchezperez/local-llm-arena), repo público. Si te sirve de plantilla para tu propia comparativa: la pieza que más se reutilizaría es el patrón `finally` del swap de modelos — sin eso, cualquier fallo a mitad de una tanda de benchmarks te deja sin servicio de producción hasta que alguien se dé cuenta a mano.
+
+## Actualización (11/08): lo que el harness no capturó
+
+El mismo día que se publicó esto, las dos primeras tareas reales de agente que le llegaron a Devstral en producción fallaron 0/2 — no por calidad de código, sino por `Context size has been exceeded` contra el límite de 64K configurado arriba. Una pedía investigar un repo de GitHub entero; la otra, redactar un prompt de sistema largo. Ninguna de las 6 tareas del harness se acerca a ese volumen de contexto, así que el bake-off nunca lo iba a ver.
+
+Subido el límite a 131K, lo cual solo cupo en VRAM bajando la caché KV de 8 a 4 bits (`-ctk q4_0 -ctv q4_0`). Esa cuantización más agresiva no está validada todavía contra el harness — pendiente repetir la tabla de la sección anterior con esta config antes de darla por buena en producción.
+
+Moraleja: un harness de 6 tareas cortas mide bien código y tool-calling, pero no dice nada sobre el techo de contexto real que necesita la carga de trabajo de producción. Eso solo lo enseña la producción.

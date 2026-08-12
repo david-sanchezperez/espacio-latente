@@ -11,6 +11,7 @@ un pipeline de IA propio, **El Radar**, que corre como Cloudflare Worker en
 | `src/` | El sitio: portada, rack de experimentos y proyectos, versión ES/EN | Cloudflare Pages, `espacio-latente.com` |
 | `worker-radar/` | El radar: digest de noticias de IA dos veces al día (colas, embeddings, memoria semántica, contabilidad de coste) | Worker, `radar.espacio-latente.com` |
 | `worker/` | Agente-bio conversacional. **Hoy desconectado** — ver más abajo | Worker |
+| `worker-buzon/` | Buzón de sugerencias con chat (DeepSeek) para acotar la idea antes de enviarla — lo usa `src/components/BuzonChat.jsx` | Worker |
 
 ```
 src/
@@ -113,6 +114,27 @@ la respuesta — el trabajo real ocurre en la cola):
 
 ```bash
 curl -X POST https://radar.espacio-latente.com/ejecutar -H "X-Radar-Secret: ..."
+```
+
+## El buzón (`worker-buzon/`)
+
+Worker activo que da servicio al chat de `src/components/BuzonChat.jsx`: el
+visitante charla con DeepSeek para acotar una sugerencia antes de enviarla.
+Guardarraíles descritos en la cabecera de `worker-buzon/src/index.js`
+(Turnstile, límite por IP, límite global diario, tope de turnos por
+conversación). Comparte el KV namespace de rate-limiting con `worker/`
+(prefijos de clave distintos).
+
+```bash
+cd worker-buzon
+npx wrangler secret put DEEPSEEK_API_KEY
+npx wrangler secret put TURNSTILE_SECRET_KEY
+```
+
+Y para desplegar, desde la raíz del repo:
+
+```bash
+npm run desplegar:buzon
 ```
 
 ## El agente-bio (`worker/`) — desconectado
