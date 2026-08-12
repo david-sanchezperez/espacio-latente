@@ -38,6 +38,7 @@ const alternativas = altHref
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{titulo}</title>
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
     <meta name="description" content={desc} />
     <link rel="canonical" href={urlAbsoluta(Astro.url.pathname)} />
     {alternativas.map((alt) => <link rel="alternate" hreflang={alt.hreflang} href={alt.href} />)}
