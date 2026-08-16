@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { estilosTerminal } from './estilosTerminal';
 
 /**
  * Terminal de arranque para la bio. Teclea línea a línea con cursor
@@ -71,25 +72,7 @@ function esperar(ms) {
 }
 
 const estilos = {
-  terminal: {
-    background: '#0d0f13',
-    border: '1px solid #2c333d',
-    borderRadius: 6,
-    overflow: 'hidden',
-    boxShadow: '0 0 40px rgba(255, 180, 84, 0.06)',
-  },
-  barra: {
-    display: 'flex', alignItems: 'center', gap: '0.4rem',
-    padding: '0.55rem 0.8rem',
-    background: '#161a20',
-    borderBottom: '1px solid #2c333d',
-  },
-  punto: { width: 10, height: 10, borderRadius: '50%', display: 'inline-block' },
-  tituloBarra: {
-    marginLeft: '0.6rem',
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: '0.72rem', color: '#8a97a5', letterSpacing: '0.04em',
-  },
+  ...estilosTerminal,
   cuerpo: {
     margin: 0,
     padding: '1.1rem 1.2rem 1.3rem',
@@ -99,10 +82,6 @@ const estilos = {
     color: '#7adb8f',
     whiteSpace: 'pre-wrap',
     minHeight: '7.5em',
-  },
-  cursor: {
-    color: '#ffb454',
-    marginLeft: 2,
   },
   cursorParpadea: {
     animation: 'parpadeo 1s step-end infinite',

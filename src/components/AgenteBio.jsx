@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { estilosTerminal } from './estilosTerminal';
 
 // Respuestas fijas: sin llamadas a ninguna API, sin coste ni tokens.
 // Si quieres ampliar lo que "sabe" el agente, añade entradas aquí (y su
@@ -194,25 +195,7 @@ function esperar(ms) {
 }
 
 const estilos = {
-  terminal: {
-    background: '#0d0f13',
-    border: '1px solid #2c333d',
-    borderRadius: 6,
-    overflow: 'hidden',
-    boxShadow: '0 0 40px rgba(255, 180, 84, 0.06)',
-  },
-  barra: {
-    display: 'flex', alignItems: 'center', gap: '0.4rem',
-    padding: '0.55rem 0.8rem',
-    background: '#161a20',
-    borderBottom: '1px solid #2c333d',
-  },
-  punto: { width: 10, height: 10, borderRadius: '50%', display: 'inline-block' },
-  tituloBarra: {
-    marginLeft: '0.6rem',
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: '0.72rem', color: '#8a97a5', letterSpacing: '0.04em',
-  },
+  ...estilosTerminal,
   cuerpo: {
     margin: 0,
     padding: '1.1rem 1.2rem',
@@ -225,7 +208,6 @@ const estilos = {
   },
   linea: { color: '#7adb8f' },
   prompt: { color: '#ffb454' },
-  cursor: { color: '#ffb454', marginLeft: 2 },
   comandos: {
     display: 'flex', flexWrap: 'wrap', gap: '0.5rem',
     padding: '0.75rem 1.2rem 1.1rem',
