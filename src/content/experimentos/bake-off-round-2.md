@@ -1,6 +1,6 @@
 ---
 titulo: "El bake-off, round 2: Devstral defiende el título contra Qwen3.8"
-resumen: "La comparativa de 5 candidatos del round 1 tenía un problema de metodología escondido: un muestreo aleatorio hacía que dos corridas de Terminal-bench no fueran comparables entre sí. Corregido eso, la revancha contra el candidato más serio (Qwen3.8-27B) se decide 3 baterías a 2 — y un tercer candidato (BTL-4) está corriendo ahora mismo mientras se publica esto."
+resumen: "La comparativa de 5 candidatos del round 1 tenía un problema de metodología escondido: un muestreo aleatorio hacía que dos corridas de Terminal-bench no fueran comparables entre sí. Corregido eso, la revancha contra el candidato más serio (Qwen3.8-27B) se decide 3 baterías a 2. Un tercer candidato, BTL-4-Compact —cuantizado a 2.3 bits de fábrica—, se queda fuera: HumanEval flojo y una corrida de Terminal-bench que ni siquiera pudo completarse por límite térmico."
 estado: pruebas
 unidad: "U-14"
 serie: bitacora
@@ -85,8 +85,60 @@ De paso salió un segundo bug de metodología: el umbral del vigilante térmico 
 
 **Devstral gana 3 de 5 baterías — incluidas las dos más pesadas y realistas (HumanEval completo y Terminal-bench) — y conserva el título.** Qwen3.8-27B no se promociona a producción; queda documentado, con su GGUF y su entrada de LiteLLM listos por si se quiere revisitar. La comparativa completa, con las notas de por qué los números del primer bake-off (contexto corto, KV sin cuantizar) no eran comparables con la config real de producción, está en el `leaderboard.md` de [local-llm-arena](https://github.com/david-sanchezperez/local-llm-arena).
 
-## En curso mientras se publica esto: BTL-4
+## Tercer candidato: BTL-4-Compact, descartado
 
-Hay un tercer candidato corriendo ahora mismo: **BTL-4-Compact**, un MoE de 35B totales / 2.1B activos que Bad Theory Labs distribuye ya cuantizado a 2.3 bits por peso (`IQ2_XXS`, un único fichero de 9.97GB) — pensado de fábrica para hardware doméstico. Eso deja tanto margen de VRAM libre en la 3090 Ti que, por primera vez en esta serie, la comparativa no está limitada por memoria: se está probando con caché KV a 8 bits (no 4, como el resto) y 128K de contexto, en vez de recortar para que quepa.
+**BTL-4-Compact** es un MoE de 35B totales / 2.1B activos que Bad Theory Labs distribuye ya cuantizado a 2.3 bits por peso (`IQ2_XXS`, un único fichero de 9.97GB) — pensado de fábrica para hardware doméstico. Eso deja tanto margen de VRAM libre en la 3090 Ti que, por primera vez en esta serie, la comparativa no está limitada por memoria: se probó con caché KV a 8 bits (no 4, como el resto) y 128K de contexto, en vez de recortar para que quepa.
 
-La misma batería completa — HumanEval n=60, código propio, agente propio y Terminal-bench con las mismas 10 tareas fijas de arriba — corre sola, vigilada por el guardarraíl térmico, sin tocar producción salvo durante la ventana de cada prueba. Actualización con los resultados en cuanto termine.
+<figure class="fig-svg">
+<svg viewBox="0 0 620 260" role="img" aria-label="Gráfico de barras: tasa de acierto de Devstral, Qwen3.8-27B y BTL-4-Compact en HumanEval, código propio y agente propio">
+  <g font-family="IBM Plex Mono, monospace" font-size="11">
+    <text x="0" y="16" fill="#e9e5da" font-size="12">HumanEval (n=60)</text>
+    <rect x="0" y="24" width="266" height="14" fill="#7adb8f"/>
+    <text x="272" y="35" fill="#7adb8f">83% (50/60) Devstral</text>
+    <rect x="0" y="42" width="246" height="14" fill="#ffb454"/>
+    <text x="252" y="53" fill="#ffb454">77% (46/60) Qwen3.8</text>
+    <rect x="0" y="60" width="171" height="14" fill="#89ddff"/>
+    <text x="177" y="71" fill="#89ddff">53% (32/60) BTL-4</text>
+
+    <text x="0" y="96" fill="#e9e5da" font-size="12">Código propio (n=30)</text>
+    <rect x="0" y="104" width="299" height="14" fill="#ffb454"/>
+    <text x="305" y="115" fill="#ffb454">93% (28/30) Devstral</text>
+    <rect x="0" y="122" width="309" height="14" fill="#7adb8f"/>
+    <text x="315" y="133" fill="#7adb8f">97% (29/30) Qwen3.8</text>
+    <rect x="0" y="140" width="299" height="14" fill="#89ddff"/>
+    <text x="305" y="151" fill="#89ddff">93% (28/30) BTL-4</text>
+
+    <text x="0" y="176" fill="#e9e5da" font-size="12">Agente propio (n=6)</text>
+    <rect x="0" y="184" width="213" height="14" fill="#ffb454"/>
+    <text x="219" y="195" fill="#ffb454">67% (4/6) Devstral</text>
+    <rect x="0" y="202" width="320" height="14" fill="#7adb8f"/>
+    <text x="326" y="213" fill="#7adb8f">100% (6/6) Qwen3.8</text>
+    <rect x="0" y="220" width="320" height="14" fill="#89ddff"/>
+    <text x="326" y="231" fill="#89ddff">100% (6/6) BTL-4</text>
+  </g>
+</svg>
+<figcaption>BTL-4 iguala a Devstral en código propio y a Qwen3.8 en agente propio — pero se hunde en HumanEval, la única de las tres pruebas con muestra grande (60 problemas) y sin margen para que la varianza disimule el peor rendimiento real.</figcaption>
+</figure>
+
+En rendimiento bruto no hay color: al tener solo 2.1B de parámetros activos por token, BTL-4 vuela.
+
+<figure class="fig-svg">
+<svg viewBox="0 0 620 100" role="img" aria-label="Gráfico de barras: tokens por segundo de Devstral, Qwen3.8-27B y BTL-4-Compact">
+  <g font-family="IBM Plex Mono, monospace" font-size="11">
+    <text x="0" y="16" fill="#e9e5da" font-size="12">Tokens/segundo</text>
+    <rect x="0" y="24" width="107" height="14" fill="#7adb8f"/>
+    <text x="113" y="35" fill="#7adb8f">58.0 tok/s — TTFT 0.045s (Devstral)</text>
+    <rect x="0" y="42" width="82" height="14" fill="#ffb454"/>
+    <text x="88" y="53" fill="#ffb454">44.5 tok/s — TTFT 0.29-0.39s (Qwen3.8)</text>
+    <rect x="0" y="60" width="320" height="14" fill="#89ddff"/>
+    <text x="326" y="71" fill="#89ddff">173.3 tok/s — TTFT 0.159s (BTL-4)</text>
+  </g>
+</svg>
+<figcaption>3x más rápido que Devstral. Con esta arquitectura MoE tan dispersa, la velocidad nunca fue la duda — la calidad sí.</figcaption>
+</figure>
+
+Y ahí es donde se cae: en el `AGENTS.md` de local-llm-arena, HumanEval es la única de las tres pruebas con muestra grande — 60 problemas frente a los 30 y 6 de las baterías propias — y BTL-4 pierde por 24 puntos frente a Qwen3.8. Con una muestra tan pequeña, código propio y agente propio pueden empatar por casualidad; HumanEval no deja ese margen.
+
+Terminal-bench nunca llegó a completarse. El guardarraíl térmico (88°C) cortó la corrida tras la primera de las 10 tareas fijas — que sí resolvió (`conda-env-conflict-resolution` ✅) — sin que el resto llegara a intentarse. No es un 1/10 de fallos: es un dato incompleto, y no se relanzó una segunda vez porque el veredicto ya estaba decidido en HumanEval. Documentado tal cual, sin forzar un número que no se tiene.
+
+**BTL-4-Compact no se promociona.** Gana en velocidad por un margen enorme y empata en las baterías cortas, pero un HumanEval 24 puntos por debajo del segundo puesto pesa más que ser 3 veces más rápido. Devstral sigue siendo el campeón.
