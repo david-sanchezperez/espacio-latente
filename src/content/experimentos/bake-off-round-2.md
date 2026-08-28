@@ -7,7 +7,7 @@ serie: bitacora
 fecha: 2026-08-19
 ---
 
-En [el bake-off original](/lab/bake-off-modelo-local) Devstral ganó a 4 candidatos con una batería corta: código propio (30 problemas) y agente propio (6 tareas). Suficiente para descartar 3 modelos con fallos reales de tool-calling, pero corto para asentar un campeón — 36 preguntas totales es poco margen quando dos modelos quedan cerca.
+En [el bake-off original](/lab/bake-off-modelo-local) Devstral ganó a 4 candidatos con una batería corta: código propio (30 problemas) y agente propio (6 tareas). Suficiente para descartar 3 modelos con fallos reales de tool-calling, pero corto para asentar un campeón — 36 preguntas totales es poco margen cuando dos modelos quedan cerca.
 
 Cuando apareció un candidato serio (**Qwen3.8-27B**, denso, MoE con solo 16 de 64 capas manteniendo KV cache), tocaba una comparativa a fondo: HumanEval real (60 problemas), la batería propia de código y agente, y **Terminal-bench** — tareas de terminal completas dentro de Docker, la prueba más pesada y realista que tiene el harness.
 
