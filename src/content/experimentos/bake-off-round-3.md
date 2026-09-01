@@ -100,6 +100,18 @@ este caso de uso, que es la calidad agéntica real medida en Terminal-bench.
 Con empate técnico, el campeón conserva el título por defecto — cambiar de
 producción exige superar, no igualar.
 
+## Actualización (28/08): Ornith sí se promocionó
+
+El veredicto de arriba duró el mismo día. Ornith reemplazó a Devstral en
+`llama-server.service` (`:8080`) el 28/08 — mismo día que este bake-off. Lo
+que hizo cambiar de opinión no fue el empate en Terminal-bench, ya conocido
+al escribir el veredicto: fue el margen de velocidad (~3x) frente al riesgo
+que ya quedó documentado aquí — que Ornith se atasca más a menudo en tareas
+agénticas largas. La apuesta es que el tiempo ahorrado en el grueso de las
+tareas compensa revisar a mano el subconjunto que se cuelga. Si esa apuesta
+no aguanta con producción real, aquí quedará anotado cuándo y por qué se
+revierte.
+
 ---
 
 *Los ESTADO.md completos de esta corrida, con el desglose de tareas y la
