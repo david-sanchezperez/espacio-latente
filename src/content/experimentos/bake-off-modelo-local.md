@@ -149,3 +149,7 @@ El mismo día que se publicó esto, las dos primeras tareas reales de agente que
 Subido el límite a 131K, lo cual solo cupo en VRAM bajando la caché KV de 8 a 4 bits (`-ctk q4_0 -ctv q4_0`). Esa cuantización más agresiva no está validada todavía contra el harness — pendiente repetir la tabla de la sección anterior con esta config antes de darla por buena en producción.
 
 Moraleja: un harness de 6 tareas cortas mide bien código y tool-calling, pero no dice nada sobre el techo de contexto real que necesita la carga de trabajo de producción. Eso solo lo enseña la producción.
+
+## Actualización (03/09): ya no es Devstral
+
+`llama-server.service` sirve hoy Ornith-1.5-35B, no Devstral — ver el [round 3](/lab/bake-off-round-3) del bake-off, que documenta el empate técnico y la promoción del 28/08. Y `MAKER_MODEL` de `agent-loops` tampoco es un modelo local: pasó a `deepseek-v4-pro` vía LiteLLM por presupuesto. Ambos cambios posteriores a este post; queda como estaba, con la foto de su momento.

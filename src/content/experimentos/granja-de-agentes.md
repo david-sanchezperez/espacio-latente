@@ -154,6 +154,8 @@ Con eso resuelto: dos agentes de memoria activos (`espacio-latente`, `ai-trading
 <figcaption>Tres procesos encadenados, cada uno con su propia persistencia (systemd de sistema, política de reinicio de Docker, systemd de usuario con linger) — ninguno depende de que yo tenga sesión iniciada.</figcaption>
 </figure>
 
+**Actualización (31/08):** Ollama se retiró de esta pila (junto con openclaw) al consolidar todo el acceso a modelos locales y remotos detrás del proxy LiteLLM — `ollama.service` sigue instalado pero deshabilitado. El diagrama de arriba describe la arquitectura tal como se montó, no la actual.
+
 ## Un auditor de deuda como parte del ciclo, no como extra
 
 Después de cerrar las cuatro piezas, hice a mano un barrido de código muerto sobre `agent-loops` — exports sin caller, tests huérfanos. Encontré unas cuantas cosas. Luego probé [ponytail](https://github.com/DietrichGebert/ponytail), un plugin de Claude Code que fuerza una disciplina de "el código que nunca se escribe no hay que mantenerlo" y trae un comando de auditoría de todo el repo (`/ponytail-audit`). Lo corrí sobre el mismo repo que ya había mirado a mano, y encontró cosas que a mí se me habían escapado — incluida una duplicación que yo mismo acababa de introducir esa misma tarde (dos funciones casi idénticas para la misma condición, una en `dispatcher.js` y otra en `status-renderer.js`, en vez de una sola en `board.js`).
