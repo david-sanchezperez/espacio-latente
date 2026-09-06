@@ -598,3 +598,52 @@ de proveedores). 8/8 ficheros de test en verde.
 artículos reales de la semana para juzgar formato, español y sustancia del
 `IMPORTA` frente a Haiku, antes de considerar cualquier cambio en
 producción.
+
+## Fase 4 — hallazgo real: V4 Flash necesita `thinking: disabled` (2026-09-06)
+
+**Contexto**: antes de que hubiera volumen real en `/comparar`, se hizo una
+prueba local con 3 artículos reales (Simon Willison, OpenAI News, Hacker
+News) reutilizando `resumir()` tal cual, con la key de DeepSeek ya existente
+en el equipo de David (`obsidian-ideas` la usa desde antes) y una key de
+Anthropic local que resultó estar caducada — Haiku se probó luego contra la
+key real de producción vía `/comparar`, no en local.
+
+**Hallazgo**: V4 Flash trae razonamiento oculto (`thinking`) **activado por
+defecto** — la doc lo confirma (api-docs.deepseek.com/guides/thinking_mode)
+pero no era evidente al implementar la fase 4 inicial. Ese razonamiento
+cuenta contra el mismo `max_tokens` que la respuesta visible. En una de las
+3 pruebas (un artículo corto y con humor, el de Simon Willison sobre un
+pelícano en bicicleta) el modelo gastó los 700 tokens de presupuesto
+enteros en `reasoning_content` y devolvió **contenido vacío**
+(`finish_reason: "length"`) — el pipeline lo habría publicado solo con el
+título, sin resumen ni relevancia, en silencio (fail-open, sin error
+visible en los logs más allá del `finish_reason`).
+
+**Corrección**: `thinking: { type: 'disabled' }` en el cuerpo de la
+petición a DeepSeek. Repetida la misma prueba tras el cambio: el caso que
+antes vaciaba el presupuesto ahora responde completo y correcto en 102
+tokens (antes: 700 truncados a cero) — más barato Y más fiable a la vez,
+no un compromiso entre coste y fiabilidad. `max_tokens` vuelve a 300 (igual
+que Haiku); el valor de 700 que se probó primero como parche fue
+descartado por innecesario una vez desactivado el razonamiento.
+
+**Resultado de la prueba de 3 artículos** (español, relevancia, IMPORTA):
+correcto y coherente en los tres — incluyendo rechazar (relevancia 1-3, por
+debajo del umbral 4) tanto una pieza de PR de OpenAI sin sustancia técnica
+como una noticia de aeroespacial sin relación con IA, con el `IMPORTA`
+explicando bien por qué en cada caso. Sin datos de Haiku equivalentes desde
+local (key caducada); pendiente comparar lado a lado con `/comparar` en
+producción.
+
+**Tests**: `test/deepseek.test.mjs` añade un caso que verifica que
+`thinking: { type: 'disabled' }` viaja en la petición — un cambio futuro
+que lo reactive sin querer debe romper este test, no descubrirse en
+producción con una pieza publicada sin resumen.
+
+**Nota aparte, no de esta fase**: la `ANTHROPIC_API_KEY` guardada en
+`litellm.env` (usada por el alias `claude-sonnet-5` de LiteLLM) está
+caducada o revocada — confirmado también fallando contra ese alias, no es
+un problema introducido por esta prueba. La producción del radar usa una
+`ANTHROPIC_API_KEY` distinta (secret de Cloudflare, funcionando — el digest
+se sigue publicando a diario), así que esto no la afecta, pero conviene
+rotar la de LiteLLM si `claude-sonnet-5` hace falta ahí para algo.

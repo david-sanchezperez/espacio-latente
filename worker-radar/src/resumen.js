@@ -201,6 +201,17 @@ async function llamarHaiku(env, contenidoUsuario, contador, sistema = SISTEMA_RE
  * reales confirme que sigue el formato de 3 líneas y escribe un español tan
  * bueno como Haiku — el índice de benchmarks (agentic/código/razonamiento)
  * no dice nada sobre eso.
+ *
+ * V4 Flash trae razonamiento oculto ACTIVADO POR DEFECTO (`thinking`,
+ * documentado en api-docs.deepseek.com/guides/thinking_mode) que cuenta
+ * contra el mismo `max_tokens` que la respuesta visible. Verificado con
+ * llamadas reales: en un caso se comió los 700 tokens de presupuesto sin
+ * emitir ni una letra de respuesta visible (`finish_reason: "length"`,
+ * `reasoning_tokens: 700`, contenido vacío) — el pipeline lo habría
+ * publicado solo con el título, sin resumen. Desactivarlo
+ * (`thinking: { type: 'disabled' }`) lo arregla del todo: mismo caso,
+ * respuesta completa y correcta en 102 tokens en vez de 700 truncados a
+ * cero — más barato Y más fiable, no un compromiso entre ambos.
  */
 async function llamarDeepSeek(env, contenidoUsuario, contador, sistema = SISTEMA_RESUMEN, maxTokens = 300) {
   if (!env.DEEPSEEK_API_KEY) {
@@ -215,6 +226,7 @@ async function llamarDeepSeek(env, contenidoUsuario, contador, sistema = SISTEMA
     body: JSON.stringify({
       model: MODELO_DEEPSEEK_FLASH,
       max_tokens: maxTokens,
+      thinking: { type: 'disabled' },
       messages: [
         { role: 'system', content: sistema },
         { role: 'user', content: contenidoUsuario },
