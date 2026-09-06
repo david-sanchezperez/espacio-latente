@@ -647,3 +647,72 @@ un problema introducido por esta prueba. La producción del radar usa una
 `ANTHROPIC_API_KEY` distinta (secret de Cloudflare, funcionando — el digest
 se sigue publicando a diario), así que esto no la afecta, pero conviene
 rotar la de LiteLLM si `claude-sonnet-5` hace falta ahí para algo.
+
+**Corrección (2026-09-06, mismo día)**: la nota de arriba era incorrecta —
+la key de producción también estaba caducada. Se detectó porque, con la key
+nueva ya en el secret de Cloudflare, `haiku` seguía devolviendo en
+`/comparar` exactamente `{ relevante: true, resumen: item.titulo }` en el
+100% de los casos: la forma exacta del fallback de error de `resumir()`
+(ver más abajo), no un resultado válido. `wrangler secret put
+ANTHROPIC_API_KEY` sin `--name` desde la raíz del repo sube el secret al
+Worker equivocado (`espacio-latente`, el sitio, resuelto por su
+`wrangler.jsonc`) en vez de `espacio-latente-radar` — hay que lanzarlo con
+`--name espacio-latente-radar` o `npm run desplegar:radar` (que sí usa
+`--config worker-radar/wrangler.toml`) para no repetir el error. Ojo
+también con `wrangler deploy` sin `--name`/`--config` desde la raíz: por el
+mismo motivo despliega el worker del sitio, no el del radar.
+
+## Fase 5 — dos jueces: DeepSeek primero, Haiku como editor adversarial (2026-09-06)
+
+**Motivación**: benchmark real con 12 artículos vía `/comparar` (una vez
+arreglada la key, ver nota de arriba) comparando Workers AI, Haiku y
+DeepSeek. Dos hallazgos:
+
+1. Un solo campo `RELEVANCIA` mezclaba dos preguntas distintas — "¿esto es
+   de IA?" (tema) y "¿aporta algo que no supieran ya?" (valor) — y eso
+   explicaba desacuerdos entre modelos que no eran sobre hechos: en el caso
+   de un artículo de MIT Technology Review sobre infraestructura de IA
+   (contenido patrocinado, sin datos técnicos), Haiku le dio 4/5 por encajar
+   de lleno con el tema; DeepSeek le dio 2/5 por no aportar nada nuevo.
+   Ambos "tenían razón" en su propio eje.
+2. DeepSeek alucinó un detalle concreto en un caso (describió una imagen de
+   un vídeo de Simon Willison como "una pelirroja con pañuelo rojo en
+   bicicleta" cuando la fuente decía "un pelícano con pañuelo rojo") —
+   sustancial y de las que un lector no detecta sin ir a la fuente.
+
+**Cambios**:
+- `SISTEMA_RESUMEN` (`resumen.js`) pasa de `RELEVANCIA` a dos campos:
+  `RELEVANCIA_TEMA` (¿el tema es IA?) y `VALOR_INFORMATIVO` (¿aporta algo
+  nuevo?). `relevante` ahora exige superar los dos umbrales
+  (`RESUMEN.UMBRAL_TEMA` y `RESUMEN.UMBRAL_RELEVANCIA`, en `config.js`), no
+  solo uno. El campo `relevancia` que ya usaban `paginas.js` (estrellas) e
+  `index.js` (orden) sigue siendo VALOR_INFORMATIVO — sin tocar ese código.
+- Línea explícita anti-alucinación en el prompt: no inventar ni completar
+  con suposiciones ningún detalle concreto (colores, cifras, nombres,
+  citas) que no esté literalmente en el texto.
+- Nueva función `revisarComoEditor()` (Haiku, prompt `SISTEMA_EDITOR`
+  distinto): recibe el TEXTO ORIGINAL completo más el resumen que el primer
+  juez ya escribió, y busca activamente una razón para RECHAZARLO
+  (alucinación, sobreclaim, o que en realidad no merezca publicarse visto
+  el texto completo). Solo se llama sobre piezas que ya pasaron el filtro
+  de relevancia del primer juez — la fracción pequeña del volumen total, no
+  todas las piezas evaluadas cada día.
+- Producción (`index.js`, bucle principal): `resumir()` con
+  `proveedor: 'deepseek'` decide relevancia (más barato, criterio editorial
+  al menos igual de bueno según el benchmark); `revisarComoEditor()` con
+  Haiku revisa lo que DeepSeek aprobó antes de publicar. Fail-open en ambas
+  etapas, igual que siempre: un fallo técnico (no un rechazo editorial)
+  aprueba con lo que ya había, nunca pierde la pieza por un error de red.
+
+**Tests**: `test/digest.test.mjs` reescribe el mock de `fetch` para separar
+`api.deepseek.com` (primer juez) de `api.anthropic.com` (editor, aprueba
+por defecto); añade dos casos nuevos — tema alto con valor bajo se descarta
+igual (el caso MIT), y un veto del editor descarta una pieza que el primer
+juez ya había aprobado. `test/deepseek.test.mjs` actualizado al formato de
+dos campos. 31/31 casos correctos en `digest.test.mjs`, 8/8 archivos de
+test en verde.
+
+**Pendiente**: repetir `/comparar` con el prompt de dos ejes para ver si
+reduce el desacuerdo Haiku/DeepSeek que motivó este cambio; no hay todavía
+medición de cuántas piezas rechaza el editor en producción real (día 1
+recién desplegado).

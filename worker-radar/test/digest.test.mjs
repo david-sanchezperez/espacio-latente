@@ -32,19 +32,38 @@ function rss(items) {
  */
 function crearEntorno({ feeds = {}, articulos = {}, vecinos = () => [], relevancia = () => 5, kv = {} } = {}) {
   const almacen = new Map(Object.entries(kv));
-  const registro = { haiku: 0, embeddings: 0, consultas: 0, inserciones: 0, filasD1: [] };
+  // `deepseek` cuenta al primer juez (decide descarte); `haiku` cuenta al
+  // editor adversarial (fase 5, ver DEVLOG.md — solo se llama sobre lo que
+  // el primer juez ya aprobó, y por defecto aprueba siempre en los tests).
+  const registro = { haiku: 0, deepseek: 0, embeddings: 0, consultas: 0, inserciones: 0, filasD1: [] };
 
   globalThis.fetch = async (url, opciones) => {
-    if (String(url).includes('api.anthropic.com')) {
-      registro.haiku++;
+    if (String(url).includes('api.deepseek.com')) {
+      registro.deepseek++;
       // El prompt real lleva "Fuente: X\n\nTítulo\n\ncuerpo": basta para que
       // el test decida una relevancia distinta por pieza si le hace falta.
-      const nota = relevancia(JSON.parse(opciones.body).messages[0].content);
+      const nota = relevancia(JSON.parse(opciones.body).messages[1].content);
       return {
         ok: true,
         async json() {
           return {
-            content: [{ type: 'text', text: `RELEVANCIA: ${nota}\nRESUMEN: Resumen de prueba.` }],
+            choices: [{ message: { content: `RELEVANCIA_TEMA: ${nota}\nVALOR_INFORMATIVO: ${nota}\nRESUMEN: Resumen de prueba.` } }],
+            usage: { prompt_tokens: 20, completion_tokens: 8 },
+          };
+        },
+      };
+    }
+    if (String(url).includes('api.anthropic.com')) {
+      registro.haiku++;
+      // Editor adversarial: por defecto aprueba siempre y devuelve el mismo
+      // resumen de prueba — los tests de este archivo prueban decisiones del
+      // pipeline (descarte, fusión, presupuesto), no el criterio editorial
+      // en sí, que ya tiene su propio test en resumen.test.mjs.
+      return {
+        ok: true,
+        async json() {
+          return {
+            content: [{ type: 'text', text: 'APROBADO: si\nRESUMEN: Resumen de prueba.' }],
             usage: { input_tokens: 10, output_tokens: 5 },
           };
         },
@@ -59,6 +78,7 @@ function crearEntorno({ feeds = {}, articulos = {}, vecinos = () => [], relevanc
 
   const env = {
     ANTHROPIC_API_KEY: 'clave-de-prueba',
+    DEEPSEEK_API_KEY: 'clave-de-prueba',
     RADAR_KV: {
       async get(clave) {
         return almacen.has(clave) ? almacen.get(clave) : null;
@@ -144,7 +164,7 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   comprobar('Fusión: no se publica una pieza nueva', res.totalNuevos, 0);
   comprobar('Fusión: el día sigue teniendo una sola pieza', guardados.length, 1);
   comprobar('Fusión: la fuente adicional SÍ queda persistida en KV', (guardados[0].fuentesAdicionales || []).join(','), 'Fuente B');
-  comprobar('Fusión: no se gasta Haiku en la copia', registro.haiku, 0);
+  comprobar('Fusión: no se gasta DeepSeek en la copia', registro.deepseek, 0);
 }
 
 // --- 3. Fusión repetida: no duplica la fuente ni reescribe de más ---
@@ -174,12 +194,13 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   comprobar('Descarte: no se publica', res.totalNuevos, 0);
   comprobar('Descarte: no se escribe el día en KV', almacen.has(`radar:items:${HOY}`), false);
   comprobar('Descarte: el link queda anotado', descartados.join(','), 'https://ejemplo.test/ruido');
-  comprobar('Descarte: se gastó una llamada a Haiku', registro.haiku, 1);
+  comprobar('Descarte: se gastó una llamada al primer juez (DeepSeek)', registro.deepseek, 1);
+  comprobar('Descarte: baja relevancia no llega al editor (Haiku)', registro.haiku, 0);
 
   // Segunda pasada sobre el mismo feed: ya no debe volver a evaluarlo.
-  const antes = registro.haiku;
+  const antes = registro.deepseek;
   await ejecutarDigest(env, [FUENTE_A], `${HOY}-test-2`);
-  comprobar('Descarte: la segunda pasada NO vuelve a llamar a Haiku', registro.haiku - antes, 0);
+  comprobar('Descarte: la segunda pasada NO vuelve a llamar al primer juez', registro.deepseek - antes, 0);
   comprobar('Descarte: la segunda pasada tampoco embebe nada', registro.embeddings, 1);
 }
 
@@ -201,7 +222,7 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   const { env, registro } = crearEntorno({ feeds: {} });
   const res = await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
   comprobar('Fuente caída: se registra el error', Object.keys(res.errores).join(','), 'Fuente A');
-  comprobar('Fuente caída: no se llama a Haiku', registro.haiku, 0);
+  comprobar('Fuente caída: no se llama a ningún juez', registro.deepseek + registro.haiku, 0);
 }
 
 // --- 7. Fase 4: al fusionar, la fuente de mayor prioridad de clase pasa a
@@ -230,16 +251,23 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   const { env, almacen } = crearEntorno({
     feeds: { 'https://ejemplo.test/a.xml': [{ titulo: 'Noticia con contexto', link: 'https://ejemplo.test/importa' }] },
   });
-  // Sobrescribimos la respuesta falsa de Haiku para incluir la tercera línea.
+  // Sobrescribimos la respuesta falsa del primer juez (DeepSeek) para incluir
+  // la cuarta línea — IMPORTA lo produce el primer juez, no el editor.
   const fetchOriginal = globalThis.fetch;
   globalThis.fetch = async (url, opciones) => {
-    if (String(url).includes('api.anthropic.com')) {
+    if (String(url).includes('api.deepseek.com')) {
       return {
         ok: true,
         async json() {
           return {
-            content: [{ type: 'text', text: 'RELEVANCIA: 5\nRESUMEN: Resumen de prueba.\nIMPORTA: Cambia cómo se sirven agentes en producción.' }],
-            usage: { input_tokens: 10, output_tokens: 5 },
+            choices: [{
+              message: {
+                content:
+                  'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nRESUMEN: Resumen de prueba.\n' +
+                  'IMPORTA: Cambia cómo se sirven agentes en producción.',
+              },
+            }],
+            usage: { prompt_tokens: 20, completion_tokens: 8 },
           };
         },
       };
@@ -271,7 +299,7 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   });
   await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
   comprobar(
-    'Artículo completo: el texto extraído llega al prompt de Haiku, no solo el snippet',
+    'Artículo completo: el texto extraído llega al prompt del primer juez, no solo el snippet',
     contenidoVisto.includes('párrafo de contenido real del artículo completo'),
     true
   );
@@ -295,6 +323,61 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
   comprobar('Artículo no legible: cae al snippet del RSS', contenidoVisto.includes('Snippet del RSS.'), true);
   comprobar('Artículo no legible: la pieza se publica igual', guardados.length, 1);
+}
+
+// --- 11. Fase 5: tema alto pero valor informativo bajo se descarta igual
+// (el caso "MIT Technology Review" del benchmark real: encajaba con el tema
+// pero no aportaba nada nuevo) ---
+{
+  const { env, almacen } = crearEntorno({
+    feeds: { 'https://ejemplo.test/a.xml': [{ titulo: 'Tema perfecto, artículo vacío', link: 'https://ejemplo.test/tema-sin-valor' }] },
+  });
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = async (url, opciones) => {
+    if (String(url).includes('api.deepseek.com')) {
+      return {
+        ok: true,
+        async json() {
+          return {
+            choices: [{ message: { content: 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 2\nRESUMEN: Resumen de prueba.' } }],
+            usage: { prompt_tokens: 20, completion_tokens: 8 },
+          };
+        },
+      };
+    }
+    return fetchOriginal(url, opciones);
+  };
+  const res = await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
+  comprobar('Dos ejes: tema alto + valor bajo se descarta (no basta con encajar con el tema)', res.totalNuevos, 0);
+  globalThis.fetch = fetchOriginal;
+}
+
+// --- 12. Fase 5: el editor adversarial (Haiku) puede rechazar lo que el
+// primer juez (DeepSeek) ya había aprobado ---
+{
+  const { env, almacen, registro } = crearEntorno({
+    feeds: { 'https://ejemplo.test/a.xml': [{ titulo: 'Aprobado por el primero, vetado por el editor', link: 'https://ejemplo.test/vetado' }] },
+  });
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = async (url, opciones) => {
+    if (String(url).includes('api.anthropic.com')) {
+      registro.haiku++;
+      return {
+        ok: true,
+        async json() {
+          return {
+            content: [{ type: 'text', text: 'APROBADO: no\nRESUMEN: Resumen de prueba.\nMOTIVO: Afirma una cifra que el artículo no menciona.' }],
+            usage: { input_tokens: 10, output_tokens: 5 },
+          };
+        },
+      };
+    }
+    return fetchOriginal(url, opciones);
+  };
+  const res = await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
+  comprobar('Editor adversarial: un veto de Haiku descarta la pieza aunque DeepSeek la aprobara', res.totalNuevos, 0);
+  comprobar('Editor adversarial: sí llegó a evaluarse (no es descarte del primer juez)', registro.haiku, 1);
+  globalThis.fetch = fetchOriginal;
 }
 
 let fallos = 0;

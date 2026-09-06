@@ -22,7 +22,7 @@
  */
 import { FUENTES, prioridadClase, elegirFuentePrincipal } from './sources.js';
 import { obtenerItems } from './feed.js';
-import { resumir, esReleaseSignificativo, generarPanorama, generarImporta } from './resumen.js';
+import { resumir, revisarComoEditor, esReleaseSignificativo, generarPanorama, generarImporta } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap } from './paginas.js';
 import { ARCHIVO, COLA, DESCARTADOS, MEMORIA, PRESUPUESTO } from './config.js';
@@ -626,22 +626,43 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
           ? await obtenerTextoArticulo(item.link, contadorSubrequests)
           : null;
 
-      // Haiku, no Workers AI: en la comparación de hoy sus resúmenes fueron
-      // sistemáticamente más ricos (fechas, cifras concretas) con el mismo
-      // snippet de RSS. Decisión provisional — revisar si compensa el coste
-      // a medida que crezca el volumen.
-      const { relevante, resumen, contexto, relevancia, porQueImporta } = await resumir(env, item, fuente, {
-        proveedor: 'haiku',
+      // DeepSeek como primer juez, no Haiku (fase 5, ver DEVLOG.md): el
+      // benchmark con artículos reales lo dejó igual o mejor de fiable que
+      // Haiku a una fracción del coste, en particular detectando piezas de
+      // bajo valor informativo (patrocinado, divulgativo) que Haiku a veces
+      // aprobaba solo por encajar con el tema. Haiku pasa a ser el segundo
+      // juez (ver más abajo): revisa SOLO lo que DeepSeek ya aprobó.
+      const primerJuez = await resumir(env, item, fuente, {
+        proveedor: 'deepseek',
         textoArticulo,
         contador: contadorSubrequests,
         pasada,
         contexto: tipo === 'relacionado' ? vecino : null,
       });
-      if (!relevante) {
+      if (!primerJuez.relevante) {
         descartar(item.link);
         descartados++;
         continue;
       }
+
+      // Editor adversarial (fase 5): Haiku revisa el resumen del primer juez
+      // buscando alucinaciones o sobreclaim antes de publicar — el rol en el
+      // que el benchmark lo mostró más afinado. Solo se ejecuta aquí, sobre
+      // lo que ya pasó el filtro de relevancia, así que el coste extra es
+      // una fracción pequeña del volumen total evaluado cada día.
+      const segundoJuez = await revisarComoEditor(env, item, fuente, primerJuez, {
+        textoArticulo,
+        contador: contadorSubrequests,
+        pasada,
+      });
+      if (!segundoJuez.aprobado) {
+        descartar(item.link);
+        descartados++;
+        continue;
+      }
+
+      const { contexto, relevancia, porQueImporta } = primerJuez;
+      const resumen = segundoJuez.resumen;
       const nuevo = {
         titulo: item.titulo,
         resumen,

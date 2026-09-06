@@ -18,7 +18,7 @@ function envFalso({ conApiKey = true } = {}) {
       ok: true,
       async json() {
         return {
-          choices: [{ message: { content: 'RELEVANCIA: 5\nRESUMEN: Resumen de DeepSeek.\nIMPORTA: Consecuencia de prueba.' } }],
+          choices: [{ message: { content: 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nRESUMEN: Resumen de DeepSeek.\nIMPORTA: Consecuencia de prueba.' } }],
           usage: { prompt_tokens: 20, completion_tokens: 8 },
         };
       },

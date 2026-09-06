@@ -46,7 +46,16 @@ export const INTERESES = {
 
 export const RESUMEN = {
   LONGITUD_MAXIMA_CONTENIDO: 8000, // caracteres, ~2000 tokens — cubre snippet o artículo completo
-  UMBRAL_RELEVANCIA: 4, // 1-5; a partir de aquí se considera "relevante" y se publica
+  // Dos ejes en vez de un solo número (fase 5, ver DEVLOG.md): el benchmark
+  // Haiku/DeepSeek mostró que un solo "RELEVANCIA" mezclaba dos preguntas
+  // distintas — "¿esto es de IA?" (tema) y "¿aporta algo que no supieras ya?"
+  // (valor) — y eso producía desacuerdos que no eran sobre hechos, sino sobre
+  // qué pregunta estaba respondiendo cada modelo. UMBRAL_TEMA es solo una
+  // puerta de "esto va de IA de verdad"; UMBRAL_RELEVANCIA (el filtro fuerte)
+  // sigue siendo sobre valor informativo, para no romper el campo `relevancia`
+  // ya usado en `paginas.js` (estrellas) e `index.js` (orden del panorama).
+  UMBRAL_TEMA: 3, // 1-5; por debajo, no es una pieza de IA central aunque la mencione
+  UMBRAL_RELEVANCIA: 4, // 1-5; valor informativo — a partir de aquí se considera "relevante" y se publica
 };
 
 export const ARCHIVO = {
