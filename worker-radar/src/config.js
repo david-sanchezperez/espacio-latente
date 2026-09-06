@@ -10,6 +10,10 @@ export const MODELOS = {
   WORKERS_AI: '@cf/meta/llama-3.2-3b-instruct',
   HAIKU: 'claude-haiku-4-5',
   EMBEDDING: '@cf/baai/bge-m3',
+  // Candidato de coste evaluado en fase 4 (ver DEVLOG.md) — solo se ejerce
+  // vía /comparar, igual que Workers AI antes de fase 1. Precio verificado en
+  // api-docs.deepseek.com el 2026-09-06, no de memoria: revisar si cambia.
+  DEEPSEEK_FLASH: 'deepseek-v4-flash',
 };
 
 // USD por token, de la documentación de precios de cada proveedor (no por
@@ -20,6 +24,7 @@ export const MODELOS = {
 export const PRECIOS_USD_POR_TOKEN = {
   [MODELOS.WORKERS_AI]: { entrada: 0.051 / 1_000_000, salida: 0.34 / 1_000_000 },
   [MODELOS.HAIKU]: { entrada: 1 / 1_000_000, salida: 5 / 1_000_000 },
+  [MODELOS.DEEPSEEK_FLASH]: { entrada: 0.14 / 1_000_000, salida: 0.28 / 1_000_000 },
 };
 
 // Fase 4 de v0.2 (ver DEVLOG.md): perfil de interés de Espacio Latente,

@@ -550,3 +550,51 @@ despliegue.
 llega al prompt de Haiku cuando el artículo se puede leer, y cuando no
 (404/paywall simulado) cae al snippet sin romper la publicación. 27/27
 casos correctos.
+
+## Fase 4 — DeepSeek V4 Flash como candidato de coste frente a Haiku (2026-09-06)
+
+**Motivación**: revisión de precios/benchmarks actuales (Artificial
+Analysis, septiembre 2026 — no de memoria, estos modelos son posteriores al
+corte de entrenamiento) frente a Haiku 4.5. DeepSeek V4 Flash ($0,14/$0,28
+por millón de tokens) y GLM-5.3-Flash ($0,15/$0,50) puntúan más alto que
+Haiku 4.5 en el índice agregado de Artificial Analysis y cuestan 7-10 veces
+menos. Pero ese índice mide agentic/código/razonamiento (GDPval, SWE-bench,
+GPQA, HLE) — nada que se parezca a "resumir un artículo en 2-3 frases de
+español idiomático y juzgar relevancia con matices editoriales", que es
+exactamente la tarea de este pipeline. Decisión: no cambiar de proveedor
+por un benchmark que no mide la tarea real — probarlo con el mismo método
+que ya validó Haiku sobre Workers AI en fase 1: `/comparar` con artículos
+reales, a ojo.
+
+**Por qué DeepSeek y no GLM todavía**: de los proyectos de David, solo
+DeepSeek tiene una cuenta de API con saldo real cargado; GLM está
+pre-configurado en otro sitio (LiteLLM) pero sin fondos. Empezar por el que
+ya se puede probar sin gestionar una cuenta nueva.
+
+**Qué se implementó**: `resumen.js` añade `llamarDeepSeek()` — misma forma
+que `llamarHaiku()` (`fetchContado`, mismo manejo de errores), pero contra
+`https://api.deepseek.com/chat/completions`, compatible con el formato
+OpenAI chat-completions (sin SDK nuevo, un `fetch` más). `resumir()` acepta
+`proveedor: 'deepseek'` como tercera opción junto a `'workers-ai'`/`'haiku'`.
+`/comparar` (`index.js`) ahora corre los tres en paralelo sobre cada
+artículo cuando `DEEPSEEK_API_KEY` está configurado — sin el secret, se
+salta esa pata de la comparación en vez de romperla (mismo criterio
+fail-open que el resto del endpoint). `config.js` añade el precio real de
+DeepSeek V4 Flash a `PRECIOS_USD_POR_TOKEN` para que el coste comparado
+salga correcto en D1, no solo el de Haiku.
+
+**Qué NO cambia**: la producción (`ejecutarDigest`) sigue usando
+exclusivamente Haiku — DeepSeek, como Workers AI antes de fase 1, solo se
+ejerce vía `/comparar`. Ningún cambio de comportamiento para el digest
+público hasta que una comparación real decida lo contrario.
+
+**Tests**: `test/deepseek.test.mjs` (nuevo, 6 casos) — parseo de la
+respuesta OpenAI-compatible (relevancia/resumen/IMPORTA) y fallo abierto
+sin `DEEPSEEK_API_KEY` configurado (se publica con el título, como el resto
+de proveedores). 8/8 ficheros de test en verde.
+
+**Pendiente**: crear `DEEPSEEK_API_KEY` como secret de Cloudflare
+(`wrangler secret put DEEPSEEK_API_KEY`) y correr `/comparar?n=5-8` sobre
+artículos reales de la semana para juzgar formato, español y sustancia del
+`IMPORTA` frente a Haiku, antes de considerar cualquier cambio en
+producción.

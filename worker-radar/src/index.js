@@ -216,17 +216,25 @@ async function paginaComparar(request, env) {
     const textoArticulo = await obtenerTextoArticulo(item.link, contador);
     const itemParaResumir = { titulo: item.titulo, link: item.link, descripcion: '' };
     const fuenteFicticia = { nombre: item.fuente };
-    const [workersAi, haiku] = await Promise.all([
+    // DeepSeek es opcional en la comparación: sin DEEPSEEK_API_KEY configurado
+    // (fase 4, ver DEVLOG.md), se salta en vez de tumbar toda la comparación —
+    // mismo criterio fail-open que el resto del endpoint.
+    const [workersAi, haiku, deepseek] = await Promise.all([
       resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'workers-ai', textoArticulo, contador, pasada }),
       resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'haiku', textoArticulo, contador, pasada }),
+      env.DEEPSEEK_API_KEY
+        ? resumir(env, itemParaResumir, fuenteFicticia, { proveedor: 'deepseek', textoArticulo, contador, pasada })
+        : Promise.resolve(null),
     ]);
-    resultados.push({
+    const resultado = {
       titulo: item.titulo,
       link: item.link,
       articuloExtraido: textoArticulo ? `${textoArticulo.length} caracteres` : 'no se pudo leer, comparado solo con el título',
       'workers-ai': workersAi,
       haiku,
-    });
+    };
+    if (deepseek) resultado.deepseek = deepseek;
+    resultados.push(resultado);
   }
 
   await registrarMetaPasada(env, {

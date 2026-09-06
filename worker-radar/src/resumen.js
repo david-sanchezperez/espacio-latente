@@ -3,6 +3,7 @@ import { fetchContado, registrarLlamada, estimarTokens } from './costes.js';
 
 const MODELO_WORKERS_AI = MODELOS.WORKERS_AI;
 const MODELO_HAIKU = MODELOS.HAIKU;
+const MODELO_DEEPSEEK_FLASH = MODELOS.DEEPSEEK_FLASH;
 const LONGITUD_MAXIMA_CONTENIDO = RESUMEN.LONGITUD_MAXIMA_CONTENIDO; // ~2000 tokens — cubre snippet o artículo completo
 const INTERES_ALTA = INTERESES.ALTA.join(', ');
 const INTERES_BAJA = INTERESES.BAJA.join(', ');
@@ -59,10 +60,13 @@ const SISTEMA_RESUMEN =
  * el proveedor.
  *
  * `opciones.proveedor`: 'workers-ai' (por defecto, incluido en la cuenta de
- * Cloudflare) o 'haiku' (Claude Haiku vía API de Anthropic, requiere el
- * secret ANTHROPIC_API_KEY). `opciones.textoArticulo`: si se pasa el texto
- * completo del artículo (ver articulo.js), se usa en vez del snippet corto
- * del RSS para un resumen con más sustancia.
+ * Cloudflare), 'haiku' (Claude Haiku vía API de Anthropic, requiere el
+ * secret ANTHROPIC_API_KEY) o 'deepseek' (DeepSeek V4 Flash, candidato de
+ * coste evaluado en fase 4 — ver DEVLOG.md —, requiere el secret
+ * DEEPSEEK_API_KEY; solo se ejerce vía /comparar, nunca en producción, igual
+ * que Workers AI antes de fase 1). `opciones.textoArticulo`: si se pasa el
+ * texto completo del artículo (ver articulo.js), se usa en vez del snippet
+ * corto del RSS para un resumen con más sustancia.
  *
  * Devuelve { relevante, resumen }. Si algo falla (parseo o la llamada en
  * sí), se prefiere fallar "abierto" — mejor publicar de más que perder una
@@ -75,13 +79,16 @@ export async function resumir(env, item, fuente, opciones = {}) {
   if (contexto) {
     contenidoUsuario += `\n\n---\nCONTEXTO PROPIO: hace unos días publicamos "${contexto.titulo}". Úsalo solo si aplica la regla del sistema.`;
   }
-  const modelo = proveedor === 'haiku' ? MODELO_HAIKU : MODELO_WORKERS_AI;
+  const modelo =
+    proveedor === 'haiku' ? MODELO_HAIKU : proveedor === 'deepseek' ? MODELO_DEEPSEEK_FLASH : MODELO_WORKERS_AI;
 
   try {
     const { texto, tokensIn, tokensOut } =
       proveedor === 'haiku'
         ? await llamarHaiku(env, contenidoUsuario, contador)
-        : await llamarWorkersAI(env, contenidoUsuario);
+        : proveedor === 'deepseek'
+          ? await llamarDeepSeek(env, contenidoUsuario, contador)
+          : await llamarWorkersAI(env, contenidoUsuario);
 
     await registrarLlamada(env, {
       pasada,
@@ -184,6 +191,44 @@ async function llamarHaiku(env, contenidoUsuario, contador, sistema = SISTEMA_RE
   const texto = ((datos.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).trim();
   const uso = datos.usage || {};
   return { texto, tokensIn: uso.input_tokens || 0, tokensOut: uso.output_tokens || 0 };
+}
+
+/**
+ * DeepSeek V4 Flash, evaluado en fase 4 como candidato de coste frente a
+ * Haiku (ver DEVLOG.md) — API compatible con OpenAI chat-completions, mismo
+ * patrón `fetch` que `llamarHaiku`, sin SDK nuevo. Solo se ejerce vía
+ * `/comparar`, nunca en producción, hasta que una comparación con artículos
+ * reales confirme que sigue el formato de 3 líneas y escribe un español tan
+ * bueno como Haiku — el índice de benchmarks (agentic/código/razonamiento)
+ * no dice nada sobre eso.
+ */
+async function llamarDeepSeek(env, contenidoUsuario, contador, sistema = SISTEMA_RESUMEN, maxTokens = 300) {
+  if (!env.DEEPSEEK_API_KEY) {
+    throw new Error('DEEPSEEK_API_KEY no configurada (wrangler secret put DEEPSEEK_API_KEY)');
+  }
+  const res = await fetchContado(contador, 'https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODELO_DEEPSEEK_FLASH,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: sistema },
+        { role: 'user', content: contenidoUsuario },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const cuerpo = await res.text();
+    throw new Error(`DeepSeek HTTP ${res.status}: ${cuerpo.slice(0, 200)}`);
+  }
+  const datos = await res.json();
+  const texto = (datos.choices?.[0]?.message?.content || '').trim();
+  const uso = datos.usage || {};
+  return { texto, tokensIn: uso.prompt_tokens || 0, tokensOut: uso.completion_tokens || 0 };
 }
 
 const SISTEMA_PANORAMA =
