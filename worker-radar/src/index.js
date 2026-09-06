@@ -276,6 +276,7 @@ async function backfillFase4(request, env) {
     const fecha = fechasAsc[i];
     const items = await leerDia(env, fecha);
     let cambios = false;
+    let presupuestoAgotadoEnEsteDia = false;
 
     for (const item of items) {
       if (item.fuentesAdicionales?.length) {
@@ -287,7 +288,16 @@ async function backfillFase4(request, env) {
           cambios = true;
         }
       }
-      if (!item.porQueImporta && contador.externos < PRESUPUESTO.SUBREQUESTS_DURO) {
+      if (!item.porQueImporta) {
+        if (contador.externos >= PRESUPUESTO.SUBREQUESTS_DURO) {
+          // Presupuesto agotado a MITAD de este día: no avanzar al siguiente
+          // (`siguienteDesde` apunta a este mismo día `i`, no a `i + 1`) — si
+          // no, las piezas de este día que aún faltan por procesar se
+          // saltarían para siempre, porque el backfill solo avanza hacia
+          // adelante por índice de día.
+          presupuestoAgotadoEnEsteDia = true;
+          continue;
+        }
         const porQueImporta = await generarImporta(env, item, { contador, pasada });
         if (porQueImporta) {
           item.porQueImporta = porQueImporta;
@@ -301,6 +311,10 @@ async function backfillFase4(request, env) {
       await env.RADAR_KV.put(`radar:items:${fecha}`, JSON.stringify(items), { expirationTtl: TTL_DIA });
     }
     diasProcesados++;
+    if (presupuestoAgotadoEnEsteDia) {
+      siguienteDesde = i;
+      break;
+    }
   }
 
   await registrarMetaPasada(env, {
