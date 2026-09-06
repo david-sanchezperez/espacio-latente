@@ -601,12 +601,30 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
         continue;
       }
 
+      // Fase 4 (ver DEVLOG.md): artículo completo en vez del snippet corto
+      // del RSS, también en producción — hasta ahora `obtenerTextoArticulo`
+      // solo se ejercía vía /comparar, precisamente para no gastar una
+      // subrequest más por pieza. El coste real (Haiku, ~$0.0015-0.002/
+      // llamada) es barato de sobra para pagarlo con más texto de entrada;
+      // lo que sí sigue siendo un límite de la plataforma, no de dinero, es
+      // el propio presupuesto de subrequests — por eso comparte el mismo
+      // umbral que la memoria semántica (`MEMORIA.PRESUPUESTO_SUBREQUESTS_MAX`):
+      // por debajo, se intenta; por encima, Haiku sigue recibiendo el
+      // snippet del RSS en vez de quedarse sin resumir. Fail-open dentro de
+      // `obtenerTextoArticulo` (paywall, bot-block, PDF, JS-only): `null`
+      // hace que `resumir()` caiga sola al snippet, como ya hacía siempre.
+      const textoArticulo =
+        contadorSubrequests.externos < MEMORIA.PRESUPUESTO_SUBREQUESTS_MAX
+          ? await obtenerTextoArticulo(item.link, contadorSubrequests)
+          : null;
+
       // Haiku, no Workers AI: en la comparación de hoy sus resúmenes fueron
       // sistemáticamente más ricos (fechas, cifras concretas) con el mismo
       // snippet de RSS. Decisión provisional — revisar si compensa el coste
       // a medida que crezca el volumen.
       const { relevante, resumen, contexto, relevancia, porQueImporta } = await resumir(env, item, fuente, {
         proveedor: 'haiku',
+        textoArticulo,
         contador: contadorSubrequests,
         pasada,
         contexto: tipo === 'relacionado' ? vecino : null,

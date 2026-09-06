@@ -23,10 +23,14 @@ function rss(items) {
 }
 
 /**
- * `env` falso. `feeds` mapea url -> items; `vecinos` decide qué devuelve
- * Vectorize; `relevancia` decide qué contesta Haiku para cada link.
+ * `env` falso. `feeds` mapea url -> items; `articulos` mapea link -> HTML
+ * completo (Fase 4: producción lee el artículo completo cuando puede, no
+ * solo el snippet — un link sin entrada aquí devuelve 404, igual que un
+ * artículo real que falla al leerse, y `resumir()` cae sola al snippet);
+ * `vecinos` decide qué devuelve Vectorize; `relevancia` decide qué contesta
+ * Haiku para cada link.
  */
-function crearEntorno({ feeds = {}, vecinos = () => [], relevancia = () => 5, kv = {} } = {}) {
+function crearEntorno({ feeds = {}, articulos = {}, vecinos = () => [], relevancia = () => 5, kv = {} } = {}) {
   const almacen = new Map(Object.entries(kv));
   const registro = { haiku: 0, embeddings: 0, consultas: 0, inserciones: 0, filasD1: [] };
 
@@ -46,6 +50,8 @@ function crearEntorno({ feeds = {}, vecinos = () => [], relevancia = () => 5, kv
         },
       };
     }
+    const html = articulos[String(url)];
+    if (html) return { ok: true, status: 200, headers: { get: () => 'text/html' }, async text() { return html; } };
     const items = feeds[String(url)];
     if (!items) return { ok: false, status: 404, async text() { return ''; } };
     return { ok: true, status: 200, async text() { return rss(items); } };
@@ -244,6 +250,51 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
   comprobar('IMPORTA: se guarda el campo cuando el modelo lo devuelve', guardados[0].porQueImporta, 'Cambia cómo se sirven agentes en producción.');
   globalThis.fetch = fetchOriginal;
+}
+
+// --- 9. Fase 4: producción usa el artículo completo cuando se puede leer,
+// no solo el snippet corto del RSS ---
+{
+  let contenidoVisto = '';
+  const { env } = crearEntorno({
+    feeds: {
+      'https://ejemplo.test/a.xml': [{ titulo: 'Con artículo completo', link: 'https://ejemplo.test/articulo-completo' }],
+    },
+    articulos: {
+      'https://ejemplo.test/articulo-completo':
+        '<html><body><p>Este es un párrafo de contenido real del artículo completo, bastante más largo y detallado que el snippet corto que trae el feed RSS.</p></body></html>',
+    },
+    relevancia: (contenido) => {
+      contenidoVisto = contenido;
+      return 5;
+    },
+  });
+  await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
+  comprobar(
+    'Artículo completo: el texto extraído llega al prompt de Haiku, no solo el snippet',
+    contenidoVisto.includes('párrafo de contenido real del artículo completo'),
+    true
+  );
+}
+
+// --- 10. Artículo no legible (404, paywall, etc.): cae al snippet sin romper nada ---
+{
+  let contenidoVisto = '';
+  const { env, almacen } = crearEntorno({
+    feeds: {
+      'https://ejemplo.test/a.xml': [{ titulo: 'Sin artículo legible', link: 'https://ejemplo.test/no-legible', descripcion: 'Snippet del RSS.' }],
+    },
+    // Sin entrada en `articulos`: el fetch del link devuelve 404, como un
+    // artículo real detrás de paywall o bloqueado a bots.
+    relevancia: (contenido) => {
+      contenidoVisto = contenido;
+      return 5;
+    },
+  });
+  await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
+  const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
+  comprobar('Artículo no legible: cae al snippet del RSS', contenidoVisto.includes('Snippet del RSS.'), true);
+  comprobar('Artículo no legible: la pieza se publica igual', guardados.length, 1);
 }
 
 let fallos = 0;

@@ -508,3 +508,45 @@ interés + pregunta de rechazo + tercer campo) cambia de forma medible la
 proporción de piezas publicadas — no hay baseline automatizada de
 precisión/recall todavía (punto 30 del plan original, evaluación pendiente
 para cuando haya un corpus etiquetado a mano).
+
+## Fase 4 — aspecto económico: gastar donde el límite era de dinero, no de Cloudflare (2026-09-06)
+
+**Motivación**: al revisar qué limitaba la calidad del pipeline, se
+distinguen dos tipos de límite muy distintos que hasta ahora se habían
+tratado igual — el techo de 50 subrequests/invocación (real, de la
+plataforma, ya gestionado con `PRESUPUESTO.SUBREQUESTS_DURO`) y el coste en
+dólares de Haiku (~$0.0015-0.002/llamada, verificado en D1 desde fase 1 —
+barato de sobra para pagar más texto de entrada). El pipeline de producción
+llevaba desde fase 1 resumiendo solo con el snippet corto del RSS —
+`obtenerTextoArticulo()` (extracción de artículo completo, `articulo.js`)
+existía desde antes pero solo se ejercía vía `/comparar`, precisamente para
+no gastar una subrequest más por pieza. Esa cautela tenía sentido cuando el
+límite real era de peticiones, pero confundía "no gastar una subrequest
+más" con "no gastar un dólar más" — son cosas distintas.
+
+**Qué se implementó**: `ejecutarDigest` ahora intenta leer el artículo
+completo de cada candidato antes de resumirlo (`index.js`), no solo en
+`/comparar`. Comparte el mismo umbral que ya protegía la memoria semántica
+(`MEMORIA.PRESUPUESTO_SUBREQUESTS_MAX = 38`): por debajo, se intenta leer
+el artículo; por encima, Haiku sigue recibiendo el snippet del RSS en vez
+de arriesgar el presupuesto de Haiku, que es lo que de verdad no puede
+fallar. Fail-open ya incorporado en `obtenerTextoArticulo` desde que se
+escribió (paywall, bloqueo de bots, PDF, contenido renderizado por JS): si
+falla, `null`, y `resumir()` cae sola al snippet — ningún caso nuevo que
+gestionar.
+
+**Qué NO cambia con esto**: el techo duro de 50 subrequests sigue
+protegido exactamente igual (`SUBREQUESTS_DURO`/`PRESUPUESTO_SUBREQUESTS_MAX`);
+lo único que cambia es que, dentro de ese presupuesto, cada pieza puede
+gastar una subrequest más a cambio de un resumen y un `IMPORTA` con más
+sustancia (fechas, cifras, matices que el snippet corto no trae). Si el
+volumen crece tanto que esto empieza a comerse el margen de verdad, el
+mecanismo de fail-open ya existente lo absorbe solo (menos piezas con
+artículo completo, nunca menos piezas publicadas) — no requiere ningún
+cambio de código, solo observar `subrequests_total` en D1 tras el
+despliegue.
+
+**Tests**: 2 casos nuevos en `test/digest.test.mjs` — el texto extraído
+llega al prompt de Haiku cuando el artículo se puede leer, y cuando no
+(404/paywall simulado) cae al snippet sin romper la publicación. 27/27
+casos correctos.
