@@ -198,6 +198,54 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   comprobar('Fuente caída: no se llama a Haiku', registro.haiku, 0);
 }
 
+// --- 7. Fase 4: al fusionar, la fuente de mayor prioridad de clase pasa a
+// principal aunque haya llegado después (ver ORDEN_CLASES en sources.js) ---
+{
+  const HN = { nombre: 'Hacker News', url: 'https://ejemplo.test/hn.xml', tipo: 'feed' };
+  const yaPublicadoPorHN = [
+    { titulo: 'Lanzamiento gordo', resumen: 'Resumen previo.', link: 'https://ejemplo.test/original', fuente: 'Hacker News', fecha: `${HOY}T08:00:00.000Z`, relevancia: 5 },
+  ];
+  const { env, almacen } = crearEntorno({
+    kv: { [`radar:items:${HOY}`]: JSON.stringify(yaPublicadoPorHN) },
+    feeds: {
+      'https://ejemplo.test/openai.xml': [{ titulo: 'Lanzamiento gordo, anunciado oficialmente', link: 'https://ejemplo.test/copia-oficial' }],
+    },
+    vecinos: () => [{ score: 0.97, metadata: { link: 'https://ejemplo.test/original', titulo: 'Lanzamiento gordo', fecha: `${HOY}T08:00:00.000Z` } }],
+  });
+  await ejecutarDigest(env, [{ nombre: 'OpenAI News', url: 'https://ejemplo.test/openai.xml', tipo: 'feed' }], `${HOY}-test`);
+  const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
+
+  comprobar('Prioridad de clase: OpenAI News (primaria) pasa a ser la fuente principal', guardados[0].fuente, 'OpenAI News');
+  comprobar('Prioridad de clase: Hacker News (comunidad) queda como fuente adicional', (guardados[0].fuentesAdicionales || []).join(','), 'Hacker News');
+}
+
+// --- 8. Fase 4: se guarda el campo IMPORTA cuando el modelo lo devuelve ---
+{
+  const { env, almacen } = crearEntorno({
+    feeds: { 'https://ejemplo.test/a.xml': [{ titulo: 'Noticia con contexto', link: 'https://ejemplo.test/importa' }] },
+  });
+  // Sobrescribimos la respuesta falsa de Haiku para incluir la tercera línea.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = async (url, opciones) => {
+    if (String(url).includes('api.anthropic.com')) {
+      return {
+        ok: true,
+        async json() {
+          return {
+            content: [{ type: 'text', text: 'RELEVANCIA: 5\nRESUMEN: Resumen de prueba.\nIMPORTA: Cambia cómo se sirven agentes en producción.' }],
+            usage: { input_tokens: 10, output_tokens: 5 },
+          };
+        },
+      };
+    }
+    return fetchOriginal(url, opciones);
+  };
+  await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
+  const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
+  comprobar('IMPORTA: se guarda el campo cuando el modelo lo devuelve', guardados[0].porQueImporta, 'Cambia cómo se sirven agentes en producción.');
+  globalThis.fetch = fetchOriginal;
+}
+
 let fallos = 0;
 for (const [descripcion, obtenido, esperado] of casos) {
   const ok = obtenido === esperado;

@@ -20,9 +20,9 @@
  *   npx wrangler queues create radar-fuentes    (una vez)
  *   npx wrangler deploy --config ./wrangler.toml
  */
-import { FUENTES } from './sources.js';
+import { FUENTES, prioridadClase, elegirFuentePrincipal } from './sources.js';
 import { obtenerItems } from './feed.js';
-import { resumir, esReleaseSignificativo, generarPanorama } from './resumen.js';
+import { resumir, esReleaseSignificativo, generarPanorama, generarImporta } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap } from './paginas.js';
 import { ARCHIVO, COLA, DESCARTADOS, MEMORIA, PRESUPUESTO } from './config.js';
@@ -64,6 +64,9 @@ export default {
       }
       if (partes[0] === 'comparar' && request.method === 'POST') {
         return await paginaComparar(request, env);
+      }
+      if (partes[0] === 'backfill-fase4' && request.method === 'POST') {
+        return await backfillFase4(request, env);
       }
       return new Response('No encontrado', { status: 404 });
     } catch (err) {
@@ -236,6 +239,85 @@ async function paginaComparar(request, env) {
   return new Response(JSON.stringify(resultados, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * Backfill retroactivo de Fase 4 (ver DEVLOG.md), temporal — mismo criterio
+ * que `/backfill-memoria` en fase 2: protegido, se retira del Worker una vez
+ * completado. Sobre CADA día ya archivado en KV, sin volver a leer los
+ * artículos originales ni repetir la evaluación de relevancia:
+ *   1. Reordena la fuente principal de piezas fusionadas por prioridad de
+ *      clase (`elegirFuentePrincipal`) — gratis, no llama a ningún modelo.
+ *   2. Genera `porQueImporta` para piezas que no lo tengan (`generarImporta`)
+ *      — 1 llamada a Haiku por pieza, ~$0.002 cada una.
+ * Paginado con `?desde=N` (índice de día, cronológico ascendente) porque el
+ * archivo completo no cabe en el presupuesto de subrequests de una sola
+ * invocación; la respuesta indica `siguienteDesde` si quedó a medias.
+ *   curl -X POST "https://radar.espacio-latente.com/backfill-fase4?desde=0" -H "X-Radar-Secret: ..."
+ */
+async function backfillFase4(request, env) {
+  if (!autorizado(request, env)) return respuestaNoAutorizado();
+  const inicio = Date.now();
+  const desde = parseInt(new URL(request.url).searchParams.get('desde') || '0', 10) || 0;
+  const fechasAsc = [...(await fechasConArchivo(env))].reverse();
+  const contador = crearContadorSubrequests();
+  const pasada = `backfill-fase4-desde-${desde}`;
+
+  let diasProcesados = 0;
+  let itemsReordenados = 0;
+  let importaGenerados = 0;
+  let siguienteDesde = null;
+
+  for (let i = desde; i < fechasAsc.length; i++) {
+    if (contador.externos >= PRESUPUESTO.SUBREQUESTS_DURO) {
+      siguienteDesde = i;
+      break;
+    }
+    const fecha = fechasAsc[i];
+    const items = await leerDia(env, fecha);
+    let cambios = false;
+
+    for (const item of items) {
+      if (item.fuentesAdicionales?.length) {
+        const principal = elegirFuentePrincipal([item.fuente, ...item.fuentesAdicionales]);
+        if (principal !== item.fuente) {
+          item.fuentesAdicionales = [item.fuente, ...item.fuentesAdicionales].filter((n) => n !== principal);
+          item.fuente = principal;
+          itemsReordenados++;
+          cambios = true;
+        }
+      }
+      if (!item.porQueImporta && contador.externos < PRESUPUESTO.SUBREQUESTS_DURO) {
+        const porQueImporta = await generarImporta(env, item, { contador, pasada });
+        if (porQueImporta) {
+          item.porQueImporta = porQueImporta;
+          importaGenerados++;
+          cambios = true;
+        }
+      }
+    }
+
+    if (cambios) {
+      await env.RADAR_KV.put(`radar:items:${fecha}`, JSON.stringify(items), { expirationTtl: TTL_DIA });
+    }
+    diasProcesados++;
+  }
+
+  await registrarMetaPasada(env, {
+    pasada,
+    subrequestsTotal: contador.externos,
+    itemsProcesados: importaGenerados,
+    duracionMs: Date.now() - inicio,
+  });
+
+  return new Response(
+    JSON.stringify(
+      { diasProcesados, diasTotales: fechasAsc.length, itemsReordenados, importaGenerados, siguienteDesde },
+      null,
+      2
+    ),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
 }
 
 function autorizado(request, env) {
@@ -478,8 +560,20 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
         const objetivo = buscarObjetivoFusion(vecino.link, existentesHoy, nuevos);
         if (objetivo) {
           objetivo.fuentesAdicionales = objetivo.fuentesAdicionales || [];
-          if (!objetivo.fuentesAdicionales.includes(fuente.nombre)) {
-            objetivo.fuentesAdicionales.push(fuente.nombre);
+          const yaVista = objetivo.fuente === fuente.nombre || objetivo.fuentesAdicionales.includes(fuente.nombre);
+          if (!yaVista) {
+            // Fase 4 (ver DEVLOG.md, punto 6 del plan): al fusionar, preferir
+            // como fuente principal la de mayor prioridad (primaria > experta
+            // > investigación > media > comunidad, ver sources.js) — no la
+            // que llegó primero. Si la nueva fuente pesa más que la actual,
+            // se intercambian; si no, se añade como fuente adicional igual
+            // que antes.
+            if (prioridadClase(fuente.nombre) < prioridadClase(objetivo.fuente)) {
+              objetivo.fuentesAdicionales.push(objetivo.fuente);
+              objetivo.fuente = fuente.nombre;
+            } else {
+              objetivo.fuentesAdicionales.push(fuente.nombre);
+            }
             if (existentesHoy.includes(objetivo)) huboCambiosEnExistentes = true;
           }
           fusionados++;
@@ -497,7 +591,7 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
       // sistemáticamente más ricos (fechas, cifras concretas) con el mismo
       // snippet de RSS. Decisión provisional — revisar si compensa el coste
       // a medida que crezca el volumen.
-      const { relevante, resumen, contexto, relevancia } = await resumir(env, item, fuente, {
+      const { relevante, resumen, contexto, relevancia, porQueImporta } = await resumir(env, item, fuente, {
         proveedor: 'haiku',
         contador: contadorSubrequests,
         pasada,
@@ -517,6 +611,7 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
         relevancia: relevancia ?? null,
       };
       if (contexto) nuevo.contexto = { titulo: contexto.titulo, link: contexto.link };
+      if (porQueImporta) nuevo.porQueImporta = porQueImporta;
       nuevos.push(nuevo);
       publicados++;
 

@@ -38,6 +38,8 @@ const ESTILO = `
   .pieza h3 a:hover { color: var(--ambar); }
   .pieza p { color: var(--acero); font-size: 0.92rem; }
   .pieza .contexto { font-size: 0.82rem; font-style: italic; margin-top: 0.5rem; }
+  .pieza .importa { font-size: 0.88rem; margin-top: 0.5rem; border-left: 2px solid var(--ambar); padding-left: 0.6rem; }
+  .pieza .importa strong { color: var(--hueso); }
   .panorama {
     background: var(--panel-alt); border: 1px solid var(--borde); border-left: 3px solid var(--ambar);
     padding: 1.1rem 1.25rem; margin-bottom: 2.5rem;
@@ -125,6 +127,9 @@ function renderPieza(item) {
   const contexto = item.contexto
     ? `<p class="contexto">↳ Contexto: <a href="${escapar(item.contexto.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.contexto.titulo)}</a></p>`
     : '';
+  const importa = item.porQueImporta
+    ? `<p class="importa"><strong>Por qué importa:</strong> ${escapar(item.porQueImporta)}</p>`
+    : '';
   return `<article class="pieza">
     <div class="cabecera-pieza">
       <span class="fuente">${escapar(fuentes)}</span>
@@ -132,6 +137,7 @@ function renderPieza(item) {
     </div>
     <h3><a href="${escapar(item.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.titulo)}</a></h3>
     <p>${escapar(item.resumen)}</p>
+    ${importa}
     ${contexto}
   </article>`;
 }
@@ -193,6 +199,7 @@ export function renderRobots() {
 Allow: /
 Disallow: /ejecutar
 Disallow: /comparar
+Disallow: /backfill-fase4
 
 Sitemap: ${ORIGEN}/sitemap.xml
 `;
@@ -228,7 +235,7 @@ export function renderFeedAtom({ origen, items }) {
     <id>${escaparXml(item.link)}</id>
     <updated>${new Date(item.fecha || Date.now()).toISOString()}</updated>
     <author><name>${escaparXml([item.fuente, ...(item.fuentesAdicionales || [])].join(' · '))}</name></author>
-    <summary>${escaparXml(item.resumen)}${item.contexto ? ` (Contexto: ${escaparXml(item.contexto.titulo)} — ${escaparXml(item.contexto.link)})` : ''}</summary>
+    <summary>${escaparXml(item.resumen)}${item.porQueImporta ? ` Por qué importa: ${escaparXml(item.porQueImporta)}` : ''}${item.contexto ? ` (Contexto: ${escaparXml(item.contexto.titulo)} — ${escaparXml(item.contexto.link)})` : ''}</summary>
   </entry>`
     )
     .join('\n');

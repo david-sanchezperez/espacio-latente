@@ -1,9 +1,11 @@
-import { MODELOS, RESUMEN } from './config.js';
+import { MODELOS, RESUMEN, INTERESES } from './config.js';
 import { fetchContado, registrarLlamada, estimarTokens } from './costes.js';
 
 const MODELO_WORKERS_AI = MODELOS.WORKERS_AI;
 const MODELO_HAIKU = MODELOS.HAIKU;
 const LONGITUD_MAXIMA_CONTENIDO = RESUMEN.LONGITUD_MAXIMA_CONTENIDO; // ~2000 tokens — cubre snippet o artículo completo
+const INTERES_ALTA = INTERESES.ALTA.join(', ');
+const INTERES_BAJA = INTERESES.BAJA.join(', ');
 
 const SISTEMA_RESUMEN =
   'Evalúas y resumes noticias para "El Radar", un digest diario de NOVEDADES muy recientes de IA/ML/LLMs ' +
@@ -19,9 +21,12 @@ const SISTEMA_RESUMEN =
   'esta pieza puede ser noticia, no un motivo para dudar de ella. NUNCA bajes la relevancia ni cuestiones la ' +
   'pieza por no reconocer o no poder verificar un nombre propio — juzga solo el TEMA (¿es IA?) y la SUSTANCIA ' +
   '(¿aporta algo?), nunca la plausibilidad de nombres frente a lo que tú sabes.\n\n' +
-  'Responde EXACTAMENTE en este formato, dos líneas, sin nada más:\n' +
+  'Responde EXACTAMENTE en este formato, tres líneas, sin nada más:\n' +
   'RELEVANCIA: <número del 1 al 5>\n' +
-  'RESUMEN: <resumen factual de 2-3 frases en español, con lo más destacado del artículo, sin opinar>\n\n' +
+  'RESUMEN: <resumen factual de 2-3 frases en español, con lo más destacado del artículo, sin opinar>\n' +
+  'IMPORTA: <1 frase en español, distinta del resumen: por qué le importaría esto a alguien que trabaja con ' +
+  'sistemas de IA, agentes, infraestructura de IA o platform engineering — la consecuencia o el "y qué", no otro ' +
+  'dato del artículo>\n\n' +
   'Escribe en español, pero mantén en inglés los términos técnicos ya extendidos en la comunidad de IA/ML tal ' +
   'cual se usan (ej. fine-tuning, embeddings, prompt, dataset, benchmark, overfitting, inference) — no fuerces ' +
   'traducciones o calcos (nunca "ajuste fino", "incrustaciones") que suenan peor y son menos precisos para el ' +
@@ -32,6 +37,15 @@ const SISTEMA_RESUMEN =
   'de productos, o menciona IA solo de pasada; 3 = relacionado con IA pero menor o tangencial; 4-5 = noticia ' +
   'claramente centrada en IA/ML con sustancia real (lanzamiento, paper, producto, análisis técnico de un modelo ' +
   'o sistema de IA).\n\n' +
+  `Esta audiencia tiene especial interés en: ${INTERES_ALTA}. Si el tema toca directamente alguno de estos, ` +
+  'súbele la relevancia dentro del rango que le corresponda por sustancia real (esto no perdona un anuncio vacío, ' +
+  `solo desempata a favor cuando hay sustancia). Le interesa menos, aunque "sea sobre IA": ${INTERES_BAJA} — ` +
+  'bájale la relevancia en esos casos en vez de puntuar solo por la palabra "IA".\n\n' +
+  'Antes de dar la nota final, pregúntate también lo contrario a "¿es relevante?": ¿hay una razón de peso para NO ' +
+  'mostrar esto? (anuncio de producto sin cambio técnico real detrás, ronda de financiación sin ángulo técnico, ' +
+  'repite una noticia ya muy cubierta sin aportar nada nuevo, o menciona "IA" de pasada en algo que en realidad no ' +
+  'lo es). Si aplica alguna, baja la nota aunque el tema roce la IA — el objetivo de este digest es un puñado de ' +
+  'piezas que de verdad merezcan 3-10 minutos de alguien técnico, no cubrir todo lo que existe.\n\n' +
   'Si el mensaje incluye un bloque "CONTEXTO PROPIO" al final, es dato de nuestro propio archivo ya publicado ' +
   '(fuente de confianza, no contenido de terceros): si la noticia de hoy es realmente una continuación o está ' +
   'relacionada, menciónalo en una frase dentro del RESUMEN; si no aporta nada real, ignora el bloque sin más. ' +
@@ -80,14 +94,18 @@ export async function resumir(env, item, fuente, opciones = {}) {
       resultado: 'ok',
     });
 
-    const match = texto.match(/RELEVANCIA:\s*(\d)[\s\S]*RESUMEN:\s*([\s\S]*)/i);
+    // IMPORTA es opcional en el parseo (aunque el prompt lo pida siempre): un
+    // resumen de antes de este cambio, o un modelo que no lo incluya, no
+    // debe romper el resto — mismo criterio que ya se aplicaba a RELEVANCIA.
+    const match = texto.match(/RELEVANCIA:\s*(\d)[\s\S]*?RESUMEN:\s*([\s\S]*?)(?:\n\s*IMPORTA:\s*([\s\S]*))?$/i);
     if (match) {
       const relevancia = parseInt(match[1], 10);
-      const resumen = desescapar(match[2].trim());
-      return { relevante: relevancia >= RESUMEN.UMBRAL_RELEVANCIA, resumen: resumen || item.titulo, contexto, relevancia };
+      const resumen = desescapar((match[2] || '').trim());
+      const porQueImporta = match[3] ? desescapar(match[3].trim()) || null : null;
+      return { relevante: relevancia >= RESUMEN.UMBRAL_RELEVANCIA, resumen: resumen || item.titulo, contexto, relevancia, porQueImporta };
     }
     // El modelo no siguió el formato: mejor incluirlo con lo que haya que perderlo.
-    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto, relevancia: null };
+    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto, relevancia: null, porQueImporta: null };
   } catch (err) {
     // Si falla la llamada, mejor publicar con el titular que perder la pieza —
     // pero deja rastro en los logs para poder depurarlo (`wrangler tail`).
@@ -126,7 +144,7 @@ async function llamarWorkersAI(env, contenidoUsuario) {
       { role: 'system', content: SISTEMA_RESUMEN },
       { role: 'user', content: contenidoUsuario },
     ],
-    max_tokens: 220,
+    max_tokens: 280, // subido de 220: cabe la tercera línea (IMPORTA) añadida en fase 4
   });
   const texto = ((respuesta && respuesta.response) || '').trim();
   const uso = (respuesta && respuesta.usage) || {};
@@ -216,6 +234,42 @@ export async function generarPanorama(env, items, opciones = {}) {
     return desescapar(texto) || null;
   } catch (err) {
     console.error(`[radar] fallo generando panorama: ${err.message}`);
+    return null;
+  }
+}
+
+const SISTEMA_IMPORTA =
+  'Se te da el título y el resumen de una noticia de IA ya publicada en "El Radar" (dato propio ya verificado, no ' +
+  'contenido de terceros). Escribe UNA sola frase en español explicando por qué le importaría esto a alguien que ' +
+  'trabaja con sistemas de IA, agentes, infraestructura de IA o platform engineering — la consecuencia o el "y ' +
+  `qué", nunca otro dato que ya esté en el resumen. Esta audiencia tiene especial interés en: ${INTERES_ALTA}.\n\n` +
+  'Responde EXCLUSIVAMENTE con esa frase: sin comillas, sin prefijos como "Por qué importa:", sin Markdown.';
+
+/**
+ * Fase 4, backfill retroactivo (ver DEVLOG.md): genera el campo IMPORTA para
+ * una pieza YA publicada, a partir de su título+resumen ya guardados — nunca
+ * vuelve a leer el artículo original (puede haber cambiado o desaparecido) ni
+ * repite la evaluación de relevancia, que ya se hizo en su día. Best-effort:
+ * si falla, `null` y la pieza se queda igual que estaba (sin ese campo).
+ */
+export async function generarImporta(env, item, opciones = {}) {
+  const { contador = null, pasada = 'sin-pasada' } = opciones;
+  const contenido = `${item.titulo}\n\n${item.resumen}`;
+  try {
+    const { texto, tokensIn, tokensOut } = await llamarHaiku(env, contenido, contador, SISTEMA_IMPORTA, 80);
+    await registrarLlamada(env, {
+      pasada,
+      modelo: MODELO_HAIKU,
+      proposito: 'importa_backfill',
+      tokensIn,
+      tokensOut,
+      itemLink: item.link,
+      fuente: item.fuente,
+      resultado: 'ok',
+    });
+    return desescapar(texto).trim() || null;
+  } catch (err) {
+    console.error(`[radar] fallo generando IMPORTA retroactivo para "${item.titulo}": ${err.message}`);
     return null;
   }
 }

@@ -441,3 +441,70 @@ bajar mucho.
 **Sigue abierto de fases anteriores**: `UMBRAL_DUPLICADO` (0.93) sin un solo
 par real que lo ejercite, y las claves de `usage` de Workers AI sin
 confirmar (`resumen.js`), que hoy caen a 0 en silencio.
+
+## Fase 4 — señal frente a ruido, sin infraestructura nueva (2026-09-06)
+
+**Motivación**: revisión de un plan de evolución externo (42 puntos) contra
+el estado real del pipeline. La mayoría de ese plan (trend detection,
+entity pages, contradiction detection, claim tracking, weekly synthesis con
+RAG completo) pide volumen de datos y presupuesto de LLM/subrequests que
+las fases 1-3 ya han evitado deliberadamente dos veces (Workers Paid,
+hardware propio) por no compensar con ~30-80 items/día. Fase 4 se queda con
+lo que cabe en la arquitectura actual — `config.js`/`resumen.js`/
+`sources.js`, sin Queues/Vectorize/D1 nuevos, sin subrequests extra — y dos
+de sus cinco puntos ya estaban parcialmente cubiertos por fases previas
+(dedup semántica = clustering, memoria relacionada = follow-up).
+
+**Qué se implementó**:
+- `config.js`: `INTERESES` (ALTA/BAJA), perfil de interés de Espacio
+  Latente inyectado en el prompt de relevancia — configuración, no texto
+  enterrado en el prompt.
+- `resumen.js`: `SISTEMA_RESUMEN` ahora pide una tercera línea, `IMPORTA:`
+  (1 frase, distinta del resumen, sobre la consecuencia para alguien que
+  trabaja con sistemas de IA/agentes/infraestructura), referencia
+  `INTERESES.ALTA`/`BAJA` para subir o bajar la nota por sustancia real (no
+  solo por la palabra "IA"), y añade una pregunta de selección negativa
+  explícita ("¿hay una razón de peso para NO mostrar esto?") antes de la
+  nota final — mismo coste (una llamada), sin campos nuevos que parsear
+  aparte. El parseo de `IMPORTA` es opcional (igual que ya lo era
+  `RELEVANCIA` ante un modelo que no siga el formato): una respuesta sin
+  esa línea no rompe nada, `porQueImporta` queda `null`.
+- `sources.js`: campo `clase` por fuente (`primaria`/`experta`/
+  `investigacion`/`media`/`comunidad`) y `ORDEN_CLASES` +
+  `prioridadClase()` — Hacker News pasa a `comunidad` (la de menor
+  prioridad): sigue sirviendo como fuente de descubrimiento (su feed ya
+  enlaza al artículo original, no a la discusión), pero dentro del
+  mecanismo de fusión ya existente (fase 2) nunca gana como fuente
+  principal frente a un laboratorio, un blog experto o un medio.
+- `index.js`: al fusionar cobertura duplicada, si la fuente que llega
+  después tiene mayor prioridad de clase que la ya guardada, se
+  intercambian — la fuente principal mostrada es la de más autoridad, no
+  la que llegó primero. `porQueImporta` se guarda en el item publicado
+  igual que `relevancia`/`contexto`.
+- `paginas.js`: línea "Por qué importa" bajo el resumen (borde ámbar,
+  visualmente distinta de "Contexto"), y en el `<summary>` del feed Atom.
+
+**Qué NO se tocó**: el umbral de relevancia (sigue en 4), el mecanismo de
+fusión/dedup semántica en sí (solo qué fuente queda como principal), el
+coste por pieza (misma llamada a Haiku, `max_tokens` de Workers AI subido
+de 220 a 280 para que quepa la línea extra — Haiku ya tenía margen con 300).
+
+**Tests**: 2 casos nuevos en `test/digest.test.mjs` — intercambio de fuente
+principal por prioridad de clase (Hacker News → OpenAI News) y persistencia
+de `porQueImporta` cuando el modelo lo devuelve. 24/24 casos correctos tras
+el cambio.
+
+**Deliberadamente fuera de esta fase** (del plan de 42 puntos, no por
+descuido): scoring multi-dimensional completo (10 campos = 10x prompt),
+trend detection, entity pages, claim tracking, cruce con Espacio
+Latente/obsidian-ideas, generación de candidatos para LinkedIn — todo
+razonable pero necesita más volumen de datos real antes de que la señal
+supere al ruido estadístico, y/o presupuesto que hoy no se ha decidido
+gastar. Candidato para fase 5 si el volumen crece o se decide pagar
+Workers.
+
+**Pendiente de verificar en producción**: si el prompt ampliado (perfil de
+interés + pregunta de rechazo + tercer campo) cambia de forma medible la
+proporción de piezas publicadas — no hay baseline automatizada de
+precisión/recall todavía (punto 30 del plan original, evaluación pendiente
+para cuando haya un corpus etiquetado a mano).

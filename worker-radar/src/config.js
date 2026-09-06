@@ -22,6 +22,23 @@ export const PRECIOS_USD_POR_TOKEN = {
   [MODELOS.HAIKU]: { entrada: 1 / 1_000_000, salida: 5 / 1_000_000 },
 };
 
+// Fase 4 de v0.2 (ver DEVLOG.md): perfil de interés de Espacio Latente,
+// inyectado en el prompt de relevancia (resumen.js) para que discrimine
+// mejor sin llamadas nuevas — deliberadamente en config y no enterrado en
+// el prompt, para poder ajustarlo sin tocar la lógica.
+export const INTERESES = {
+  ALTA: [
+    'sistemas agénticos', 'coding agents', 'inferencia local de LLMs', 'evaluación de modelos',
+    'cuantización', 'llama.cpp', 'vLLM', 'optimización de inferencia', 'MCP', 'RAG y memoria',
+    'infraestructura de IA', 'Kubernetes/OpenShift para IA', 'infraestructura GPU', 'model serving',
+    'sistemas multi-agente', 'observabilidad de IA', 'seguridad en IA', 'workflows autónomos',
+  ],
+  BAJA: [
+    'producto de IA de consumo genérico', 'ronda de financiación sin ángulo técnico',
+    'noticia genérica de startup', 'anuncio de "IA añadida al producto X" sin detalle técnico',
+  ],
+};
+
 export const RESUMEN = {
   LONGITUD_MAXIMA_CONTENIDO: 8000, // caracteres, ~2000 tokens — cubre snippet o artículo completo
   UMBRAL_RELEVANCIA: 4, // 1-5; a partir de aquí se considera "relevante" y se publica
