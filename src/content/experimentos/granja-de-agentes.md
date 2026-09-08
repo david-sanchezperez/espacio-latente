@@ -95,6 +95,10 @@ RESULT_JSON:
 
 Y `dispatcher.js` ya no adivina: busca el marcador, valida el JSON, y si no aparece o no parsea **no lo esconde** — emite un evento `result_protocol_missing` visible en el board. Un runtime mal configurado se detecta en vez de disfrazarse de éxito silencioso. `learnings` es, además, el campo que va a alimentar memoria persistente en la siguiente pieza.
 
+**Actualización (15/08):** el evento existía, pero no bastaba. Una tarea real apareció como `done` en el board sin ningún commit ni fichero. Dos causas, una encima de la otra: `docker-runner.js::getLogs()` solo pedía las últimas 500 líneas del contenedor para buscar el marcador `RESULT_JSON:`, y un agente que escribe casi token a token puede empujarlo fuera de esa ventana en una tarea larga; y cuando `extractResult()` no lo encontraba, el código no usaba el evento que ya emitía — marcaba la tarea `done` igual, con un resumen genérico ("Task completed successfully") y `files_changed: []`, porque el contenedor había salido con exit code 0. Un exit 0 no es lo mismo que "hizo lo que le pedí".
+
+Dos fixes: `tail: 'all'` en vez de 500 líneas (el contenedor es de un solo uso, pedir el log completo no cuesta nada), y en `dispatcher.js::collectResults()`, cuando no hay `RESULT_JSON` parseable la tarea pasa a `blocked` — mismo camino que ya existía para un OOM — en vez de colarse en `done`. Validado con 4 tareas de depuración (3 completaron limpio, 1 volvió a fallar en emitir el marcador — residual esperado del modelo, no del parser) y con la tarea real relanzada, acotando su alcance: esta vez sí hubo commit verificable.
+
 ## Pieza D — agrupación visual (cosmética, pero no gratis)
 
 El board interno mantiene el enum de estados original (`triage/todo/ready/running/blocked/done/archived/gave_up`) porque todo el dispatcher ya razona sobre él. Pero para mirarlo de un vistazo, cuatro columnas dicen más que ocho estados: **Ready · In Progress · Ready to Verify · Done/Discarded**.
