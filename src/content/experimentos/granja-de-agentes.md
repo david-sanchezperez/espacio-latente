@@ -99,12 +99,6 @@ Y `dispatcher.js` ya no adivina: busca el marcador, valida el JSON, y si no apar
 
 Dos fixes: `tail: 'all'` en vez de 500 líneas (el contenedor es de un solo uso, pedir el log completo no cuesta nada), y en `dispatcher.js::collectResults()`, cuando no hay `RESULT_JSON` parseable la tarea pasa a `blocked` — mismo camino que ya existía para un OOM — en vez de colarse en `done`. Validado con 4 tareas de depuración (3 completaron limpio, 1 volvió a fallar en emitir el marcador — residual esperado del modelo, no del parser) y con la tarea real relanzada, acotando su alcance: esta vez sí hubo commit verificable.
 
-## Pieza D — agrupación visual (cosmética, pero no gratis)
-
-El board interno mantiene el enum de estados original (`triage/todo/ready/running/blocked/done/archived/gave_up`) porque todo el dispatcher ya razona sobre él. Pero para mirarlo de un vistazo, cuatro columnas dicen más que ocho estados: **Ready · In Progress · Ready to Verify · Done/Discarded**.
-
-Lo interesante de "Ready to Verify" es que no es un estado nuevo — es una tarea `ready` cuyo `assignee` es un checker (`qa`/`security`) y cuyos hermanos maker ya han terminado. Esa condición ya existía en el dispatcher (`hasRunningSiblings`, la usa para decidir si lanza el checker o lo deja esperando); lo único que hice fue exponerla como vista, sin tocar el estado real.
-
 ## Pieza C — memoria persistente, y por qué no vive donde yo pensaba
 
 Antes de esta pieza, cada tarea empezaba de cero: nada de lo aprendido en una tarea llegaba a la siguiente. La idea era sencilla — antes de generar el spec de una tarea, consultar una memoria acotada al proyecto (mismo namespace que el board slug), y al terminar, escribir de vuelta usando el campo `learnings` del contrato de la Pieza B. Lo interesante no fue el código (poco: `queryMemories`/`writeMemory`, fail-open, dos puntos de enganche), sino dónde vive esa memoria.
@@ -122,6 +116,12 @@ Aquí entra un principio que ya se aplicó en otro proyecto de esta casa: **mant
 - Ollama solo escuchaba en `127.0.0.1`, invisible para un contenedor — el mismo ajuste (`--host 0.0.0.0`) que ya hizo falta para el propio Hermes, aplicado ahora al servicio de embeddings.
 
 Con eso resuelto: dos agentes de memoria activos (`espacio-latente`, `ai-trading-lab`, uno por proyecto), probados de punta a punta con datos reales, y con persistencia — sobreviven a un reinicio del sobremesa sin que nadie tenga que iniciar sesión.
+
+## Pieza D — agrupación visual (cosmética, pero no gratis)
+
+El board interno mantiene el enum de estados original (`triage/todo/ready/running/blocked/done/archived/gave_up`) porque todo el dispatcher ya razona sobre él. Pero para mirarlo de un vistazo, cuatro columnas dicen más que ocho estados: **Ready · In Progress · Ready to Verify · Done/Discarded**.
+
+Lo interesante de "Ready to Verify" es que no es un estado nuevo — es una tarea `ready` cuyo `assignee` es un checker (`qa`/`security`) y cuyos hermanos maker ya han terminado. Esa condición ya existía en el dispatcher (`hasRunningSiblings`, la usa para decidir si lanza el checker o lo deja esperando); lo único que hice fue exponerla como vista, sin tocar el estado real.
 
 <figure class="fig-svg">
 <svg viewBox="0 0 720 210" role="img" aria-label="Pila de memanto en el sobremesa: Ollama sirve embeddings y LLM al motor Moorcheh en Docker, que a su vez sirve la API REST de memanto; el orquestador consulta por HTTP; los tres procesos sobreviven a un reinicio">
