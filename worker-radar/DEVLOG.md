@@ -717,6 +717,91 @@ reduce el desacuerdo Haiku/DeepSeek que motivó este cambio; no hay todavía
 medición de cuántas piezas rechaza el editor en producción real (día 1
 recién desplegado).
 
+## Fase 6 — incidente de secrets tras fase 5, categorías y hilo navegable (2026-09-07/08)
+
+**Incidente 1 — `resumen` idéntico al `titulo` en todas las piezas**: David
+detectó que el radar publicaba el título como resumen en todo el digest.
+Causa: el despliegue de fase 5 (commit 2fded68) nunca llevó consigo los
+secrets `DEEPSEEK_API_KEY` y `ANTHROPIC_API_KEY` al Worker
+`espacio-latente-radar` — `wrangler secret list` devolvía `[]`. Con los dos
+jueces fallando al 100% desde la pasada del 07/09, `resumir()` y
+`revisarComoEditor()` hacían fail-open con `resumen: item.titulo` (por
+diseño, ver fase 5) — confirmado en D1 (100% `error_estimado` en
+`deepseek-v4-flash`, cero llamadas de `editor_adversarial`).
+
+**Corrección**: `DEEPSEEK_API_KEY` (key nueva, etiquetada `radar` en el
+dashboard de DeepSeek — antes se probó por error con la key de
+`obsidian-ideas` desde `litellm.env`, que también sirvió como comprobación
+de que el fallo era el secret y no el código) y `ANTHROPIC_API_KEY` subidas
+como secrets del Worker. Nuevo endpoint de un solo uso,
+`POST /regenerar-resumenes?fecha=YYYY-MM-DD` (`index.js`): reprocesa con el
+pipeline real de dos jueces solo las piezas con `resumen === titulo` de un
+día ya archivado; las que el re-juicio rechaza (nunca se habrían publicado
+sin el fallo) se retiran del día en vez de dejarlas con el título repetido
+para siempre — no hay permalink por pieza, solo el archivo del día, así que
+retirarlas no rompe nada. Sin pasos de continuación explícitos: como el
+presupuesto de 45 subrequests/invocación no llega para un día completo, el
+endpoint se limita a lo que le cabe y dispara un `pendientes` en la
+respuesta — repetir la llamada hasta que sea 0 termina el resto.
+
+**Incidente 2 — la corrección de `ANTHROPIC_API_KEY` no arregló nada**: tras
+subir esa key (fichero `api_key_espacio-latente.txt`), el editor adversarial
+seguía sin ejercerse — resultó estar caducada/revocada (`HTTP 401
+authentication_error`), y como `revisarComoEditor()` falla abierto, el
+síntoma era invisible (ninguna pieza se perdía, pero tampoco se revisaba
+nada). Corregido con una key nueva creada ese mismo día. Lección para la
+próxima vez: un secret que sube sin error de `wrangler` no implica que el
+proveedor lo acepte — hay que verificarlo con una llamada real
+(`/comparar`, o mirar `resultado` en D1 por `pasada`), no solo con
+`wrangler secret list`.
+
+**Feature — categorías + filtro por tema**: hasta ahora el único filtro del
+digest era el de relevancia de David (`INTERESES` en `config.js`), pensado
+para su perfil, no para un visitante cualquiera de espacio-latente.com. Se
+añade una 5ª línea al prompt de `SISTEMA_RESUMEN` (`CATEGORIA`), vocabulario
+cerrado en `config.js` (`CATEGORIAS`: `modelos, agentes, infraestructura,
+investigacion, producto, seguridad` — mismo criterio que las tags de
+obsidian-ideas: cerrado, no lo que el modelo quiera escribir). Parseo
+tolerante (si falta la línea, no rompe el resto — mismo criterio que
+`IMPORTA`). El filtro es 100% cliente: `paginas.js` pinta una pastilla por
+pieza y una barra de botones que hace `hidden` sobre `.pieza[data-categoria]`
+con JS vanilla inline — sin ruta ni backend nuevos. Backfill retroactivo
+para piezas ya publicadas sin este campo: `POST /backfill-categorias?fecha=`
+(`generarCategoria()` en `resumen.js`, Haiku sobre título+resumen ya
+guardados, mismo patrón que `generarImporta` de fase 4).
+
+**Feature — hilo navegable**: la "pieza de contexto" (memoria semántica,
+fase 2) ya enlazaba a la cobertura relacionada de días atrás, pero como una
+frase suelta, sin más recorrido. Ahora cada pieza con contexto hereda o crea
+un `historiaId` estable — hash SHA-256 del link de la primera entrega
+(`idDesdeLink`, exportado de `memoria.js`, reutilizando la misma función que
+ya generaba los ids de Vectorize) — y se guarda también en la metadata del
+vector en Vectorize, así una tercera entrega futura llega al mismo id sin
+tener que ir a buscarlo. Un KV aparte, `radar:hilo:<historiaId>`, acumula
+`{titulo, link, fecha}` de cada entrega (la raíz se añade la primera vez que
+el hilo se anota). Nueva ruta `GET /hilo/:id` lista el hilo completo en
+orden cronológico; en la pieza aparece "ver hilo completo" junto al link de
+contexto. Best-effort: un fallo anotando el hilo no debe perder la pieza en
+sí (try/catch alrededor, como el resto de la memoria semántica).
+
+**Tests**: `test/deepseek.test.mjs` añade dos casos (CATEGORIA se parsea y
+normaliza; una categoría fuera del vocabulario cerrado se descarta a
+`null`). `test/digest.test.mjs` añade dos comprobaciones al caso de
+contexto histórico ya existente (la pieza nueva lleva `historiaId`; el hilo
+en KV queda anotado con la raíz + la nueva entrega). 33/33 casos correctos,
+8/8 archivos en verde.
+
+**Resultado en producción**: `/regenerar-resumenes` sobre 2026-09-07 pasó de
+55 a 30 piezas reales tras varias vueltas (25 retiradas porque nunca habrían
+pasado el filtro real de dos jueces); `/backfill-categorias` clasificó las
+30 piezas de una sola vuelta con la key de Anthropic ya corregida.
+
+**Pendiente**: `/hilo/*` no está en el sitemap todavía (pocos hilos reales
+para que merezca la pena); no hay backfill retroactivo de `historiaId` para
+piezas antiguas sin categoría, ya que exigiría recalcular vecinos en
+Vectorize, no solo releer título+resumen como el resto de backfills de esta
+fase.
+
 ## Fase 4 — ampliación del pool de fuentes: ingeniería de IA además de research (2026-09-10)
 
 **Objetivo**: el pool de `sources.js` cubría bien labs oficiales, blogs
