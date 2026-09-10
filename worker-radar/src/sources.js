@@ -21,6 +21,7 @@ export const FUENTES = [
   { nombre: 'OpenAI News', url: 'https://openai.com/news/rss.xml', tipo: 'feed', clase: 'primaria' },
   { nombre: 'Google DeepMind', url: 'https://deepmind.google/blog/rss.xml', tipo: 'feed', clase: 'primaria' },
   { nombre: 'Google Research', url: 'https://research.google/blog/rss/', tipo: 'feed', clase: 'primaria' },
+  { nombre: 'Microsoft Research', url: 'https://www.microsoft.com/en-us/research/feed/', tipo: 'feed', clase: 'primaria' },
 
   // --- Espejos no oficiales (labs sin RSS propio) ---
   { nombre: 'Meta AI', url: 'https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_meta_ai.xml', tipo: 'feed', clase: 'primaria' },
@@ -39,6 +40,10 @@ export const FUENTES = [
   { nombre: 'Import AI (Jack Clark)', url: 'https://importai.substack.com/feed', tipo: 'feed', clase: 'experta' },
   { nombre: 'fast.ai', url: 'https://www.fast.ai/index.xml', tipo: 'feed', clase: 'experta' },
 
+  // --- AI Engineering / Inferencia ---
+  { nombre: 'NVIDIA Technical Blog', url: 'https://developer.nvidia.com/blog/feed/', tipo: 'feed', clase: 'primaria' },
+  { nombre: 'Red Hat AI', url: 'https://www.redhat.com/en/rss/blog/channel/artificial-intelligence', tipo: 'feed', clase: 'primaria' },
+
   // --- Medios tecnológicos ---
   { nombre: 'Ars Technica · IA', url: 'https://arstechnica.com/ai/feed/', tipo: 'feed', clase: 'media' },
   { nombre: 'The Verge · IA', url: 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml', tipo: 'feed', clase: 'media' },
@@ -48,6 +53,7 @@ export const FUENTES = [
   // --- Papers ---
   { nombre: 'arXiv cs.CL', url: 'https://rss.arxiv.org/rss/cs.CL', tipo: 'feed', clase: 'investigacion' },
   { nombre: 'arXiv cs.LG', url: 'https://rss.arxiv.org/rss/cs.LG', tipo: 'feed', clase: 'investigacion' },
+  { nombre: 'arXiv cs.AI', url: 'https://rss.arxiv.org/rss/cs.AI', tipo: 'feed', clase: 'investigacion' },
   { nombre: 'Hugging Face Blog', url: 'https://huggingface.co/blog/feed.xml', tipo: 'feed', clase: 'primaria' },
 
   // --- Comunidad (mezcla mucho no-IA; la relevancia la juzga el propio
@@ -62,6 +68,9 @@ export const FUENTES = [
   // --- GitHub Releases (código, no noticias) ---
   { nombre: 'transformers (release)', url: 'https://github.com/huggingface/transformers/releases.atom', tipo: 'github_release', clase: 'primaria' },
   { nombre: 'vLLM (release)', url: 'https://github.com/vllm-project/vllm/releases.atom', tipo: 'github_release', clase: 'primaria' },
+  { nombre: 'SGLang (release)', url: 'https://github.com/sgl-project/sglang/releases.atom', tipo: 'github_release', clase: 'primaria' },
+  { nombre: 'llama.cpp (release)', url: 'https://github.com/ggml-org/llama.cpp/releases.atom', tipo: 'github_release', limite: 12, clase: 'primaria' },
+  { nombre: 'LangGraph (release)', url: 'https://github.com/langchain-ai/langgraph/releases.atom', tipo: 'github_release', soloRaiz: true, clase: 'primaria' },
   { nombre: 'LangChain (release)', url: 'https://github.com/langchain-ai/langchain/releases.atom', tipo: 'github_release', soloRaiz: true, clase: 'primaria' },
   { nombre: 'Ollama (release)', url: 'https://github.com/ollama/ollama/releases.atom', tipo: 'github_release', clase: 'primaria' },
   { nombre: 'Anthropic SDK Python (release)', url: 'https://github.com/anthropics/anthropic-sdk-python/releases.atom', tipo: 'github_release', clase: 'primaria' },

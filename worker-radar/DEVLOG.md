@@ -716,3 +716,62 @@ test en verde.
 reduce el desacuerdo Haiku/DeepSeek que motivó este cambio; no hay todavía
 medición de cuántas piezas rechaza el editor en producción real (día 1
 recién desplegado).
+
+## Fase 4 — ampliación del pool de fuentes: ingeniería de IA además de research (2026-09-10)
+
+**Objetivo**: el pool de `sources.js` cubría bien labs oficiales, blogs
+expertos y research (arXiv), pero tenía un hueco claro en la capa de
+ingeniería de IA/inferencia (runtimes, serving, infra de producción) —
+justo el tipo de señal que separa "salió un paper" de "esto ya se está
+convirtiendo en práctica de plataforma".
+
+**Regla seguida** (la que ya fija el comentario de cabecera del archivo):
+ninguna fuente entra sin verificar a mano que el feed responde y es
+RSS/Atom real. Antes de tocar `sources.js` se comprobó cada URL candidata
+con una petición real (contenido, formato, fecha de últimas entradas).
+
+**Añadido** (6 fuentes nuevas, todas `clase: 'primaria'`):
+- `Microsoft Research` (feed RSS 2.0) — hueco evidente: ya estaban
+  OpenAI/DeepMind/Google Research/Meta/Anthropic pero no MSR.
+- `NVIDIA Technical Blog` (feed Atom) — inferencia distribuida,
+  speculative decoding, disaggregated serving; contenido hecho a medida
+  para el ángulo de agentic infra del radar.
+- `Red Hat AI` — no el blog general de Red Hat (mezcla RHEL/seguridad/
+  contenedores, mismo problema de ruido que TechCrunch), sino el feed del
+  canal específico `/rss/blog/channel/artificial-intelligence`, verificado
+  con las 3 últimas entradas 100% de IA.
+- `arXiv cs.AI` — junto a `cs.CL`/`cs.LG` ya existentes, capta agentes/
+  planning/reasoning que no siempre caen en esas dos categorías.
+- `SGLang (release)`, `llama.cpp (release)`, `LangGraph (release)` —
+  mismo tipo `github_release` y mismas reglas de filtrado minor/major que
+  ya usaban vLLM/transformers, sin código nuevo. `llama.cpp` lleva
+  `limite: 12` (como Hacker News) por su cadencia de releases mucho más
+  alta que el resto.
+
+**Evaluado y descartado por ahora** (no por criterio, por falta de fuente
+verificable):
+- `Qwen` y `DeepSeek` — no existe RSS del blog en ninguno de los dos
+  (`qwenlm.github.io` no publica feed; el sitio de DeepSeek tampoco). En
+  GitHub tampoco hay un repo "flagship" que sirva de proxy: la actividad
+  de ambas orgs es toda tooling interno (qwen-code, plugins, DeepGEMM,
+  FlashMLA...), no el modelo en sí, y el único release de
+  `DeepSeek-V3/releases.atom` es un archival de una sola entrada (jun
+  2025) para generar DOI. Cubrirlos bien exigiría un modelo de fuente
+  compuesta (web + GitHub + Hugging Face por "identidad") que hoy no
+  existe en `sources.js` — no se ha construido sin un caso de uso real
+  que lo justifique.
+- `Artificial Analysis` — sin RSS en el sitio (`/rss.xml` no existe);
+  distribuyen `/articles` y `/changelog` solo por email. Útil como fuente
+  de benchmarks/coste-rendimiento, pero necesitaría scraping dedicado, no
+  una entrada de feed.
+- Reestructurar `clase` (autoridad de fusión) en algo tipo `dominios`
+  (autoridad + área temática, para poder medir cobertura por
+  research/inference/agentes/etc.) — aparcado por ser un rediseño de
+  taxonomía sin un consumidor real todavía; se retoma si en algún momento
+  se construye un panel de cobertura por área.
+
+**Verificación**: sin tests dedicados (el archivo de fuentes no tiene
+lógica, son datos), pero se corrió toda la suite tras cada bloque de
+cambios — 8/8 archivos de test en verde, sin tocar `sources.test.mjs` (las
+reglas de prioridad de clase y fusión de duplicados no cambian con más
+fuentes de la misma clase).
