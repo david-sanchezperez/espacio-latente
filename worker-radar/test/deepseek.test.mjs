@@ -9,7 +9,7 @@ import { resumir } from '../src/resumen.js';
 const ITEM = { titulo: 'Noticia de prueba', link: 'https://ejemplo.test/uno', descripcion: 'Snippet corto.' };
 const FUENTE = { nombre: 'Fuente de prueba' };
 
-function envFalso({ conApiKey = true } = {}) {
+function envFalso({ conApiKey = true, contenido } = {}) {
   const registro = { llamadasDeepseek: 0, filasD1: [], cuerposEnviados: [] };
   globalThis.fetch = async (url, opciones) => {
     registro.llamadasDeepseek++;
@@ -18,7 +18,7 @@ function envFalso({ conApiKey = true } = {}) {
       ok: true,
       async json() {
         return {
-          choices: [{ message: { content: 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nRESUMEN: Resumen de DeepSeek.\nIMPORTA: Consecuencia de prueba.' } }],
+          choices: [{ message: { content: contenido || 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nRESUMEN: Resumen de DeepSeek.\nIMPORTA: Consecuencia de prueba.' } }],
           usage: { prompt_tokens: 20, completion_tokens: 8 },
         };
       },
@@ -50,6 +50,23 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   // llamada real, ver DEVLOG.md) — desactivarlo es lo que lo arregla, así
   // que un cambio que lo reactive sin querer debe romper este test.
   comprobar('DeepSeek: pide thinking desactivado', JSON.stringify(registro.cuerposEnviados[0].thinking), JSON.stringify({ type: 'disabled' }));
+}
+
+{
+  const { env } = envFalso({
+    contenido: 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nCATEGORIA: Modelos\nRESUMEN: Resumen con categoría.\nIMPORTA: Consecuencia.',
+  });
+  const resultado = await resumir(env, ITEM, FUENTE, { proveedor: 'deepseek' });
+  comprobar('CATEGORIA: se parsea y normaliza a minúscula', resultado.categoria, 'modelos');
+  comprobar('CATEGORIA: no rompe el resumen', resultado.resumen, 'Resumen con categoría.');
+}
+
+{
+  const { env } = envFalso({
+    contenido: 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nCATEGORIA: no-es-del-vocabulario\nRESUMEN: Resumen igual.',
+  });
+  const resultado = await resumir(env, ITEM, FUENTE, { proveedor: 'deepseek' });
+  comprobar('CATEGORIA fuera del vocabulario cerrado: se descarta a null', resultado.categoria, null);
 }
 
 {

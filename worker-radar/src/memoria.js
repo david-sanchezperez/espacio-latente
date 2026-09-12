@@ -81,6 +81,7 @@ export async function buscarVecinos(env, vector, topK = MEMORIA.TOP_K, contador 
       link: m.metadata?.link,
       titulo: m.metadata?.titulo,
       fecha: m.metadata?.fecha,
+      historiaId: m.metadata?.historiaId || null,
     }));
   } catch (err) {
     console.error(`[radar] fallo consultando Vectorize: ${err.message}`);
@@ -93,16 +94,19 @@ export async function buscarVecinos(env, vector, topK = MEMORIA.TOP_K, contador 
  * futuras pasadas los encuentren como vecinos. Un solo `insert` para todo el
  * lote (Vectorize acepta el array) en vez de uno por pieza: mismo ahorro de
  * subrequests que `generarEmbeddings`.
- * `entradas`: [{ link, titulo, fecha, vector }].
+ * `entradas`: [{ link, titulo, fecha, vector, historiaId }]. `historiaId` es
+ * opcional (fase "hilo navegable"): si el item pertenece a un hilo, se guarda
+ * en la metadata para que el próximo item relacionado lo herede sin tener
+ * que ir a buscarlo a KV.
  */
 export async function guardarVectores(env, entradas, contador = null) {
   if (!entradas.length) return;
   try {
     const vectores = await Promise.all(
-      entradas.map(async ({ link, titulo, fecha, vector }) => ({
+      entradas.map(async ({ link, titulo, fecha, vector, historiaId }) => ({
         id: await idDesdeLink(link),
         values: vector,
-        metadata: { link, titulo, fecha },
+        metadata: historiaId ? { link, titulo, fecha, historiaId } : { link, titulo, fecha },
       }))
     );
     if (contador) contador.externos++;
@@ -132,8 +136,14 @@ export function clasificarVecinos(vecinos, hoy) {
   return { tipo: 'nuevo', vecino: mejor || null };
 }
 
-/** SHA-256 del link, truncado — Vectorize exige ids compactos y los links no tienen longitud acotada. */
-async function idDesdeLink(link) {
+/**
+ * SHA-256 del link, truncado — Vectorize exige ids compactos y los links no
+ * tienen longitud acotada. Exportado porque también sirve como id estable de
+ * "hilo" (ver `index.js`): el id de un hilo es siempre el hash del link de su
+ * primera pieza, así cualquier item que la referencie como contexto llega al
+ * mismo id sin coordinación extra.
+ */
+export async function idDesdeLink(link) {
   const datos = new TextEncoder().encode(link);
   const hash = await crypto.subtle.digest('SHA-256', datos);
   return Array.from(new Uint8Array(hash))

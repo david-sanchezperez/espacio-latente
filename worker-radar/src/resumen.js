@@ -1,4 +1,4 @@
-import { MODELOS, RESUMEN, INTERESES } from './config.js';
+import { MODELOS, RESUMEN, INTERESES, CATEGORIAS } from './config.js';
 import { fetchContado, registrarLlamada, estimarTokens } from './costes.js';
 
 const MODELO_WORKERS_AI = MODELOS.WORKERS_AI;
@@ -7,6 +7,7 @@ const MODELO_DEEPSEEK_FLASH = MODELOS.DEEPSEEK_FLASH;
 const LONGITUD_MAXIMA_CONTENIDO = RESUMEN.LONGITUD_MAXIMA_CONTENIDO; // ~2000 tokens — cubre snippet o artículo completo
 const INTERES_ALTA = INTERESES.ALTA.join(', ');
 const INTERES_BAJA = INTERESES.BAJA.join(', ');
+const LISTA_CATEGORIAS = CATEGORIAS.join(', ');
 
 const SISTEMA_RESUMEN =
   'Evalúas y resumes noticias para "El Radar", un digest diario de NOVEDADES muy recientes de IA/ML/LLMs ' +
@@ -22,9 +23,10 @@ const SISTEMA_RESUMEN =
   'esta pieza puede ser noticia, no un motivo para dudar de ella. NUNCA bajes la relevancia ni cuestiones la ' +
   'pieza por no reconocer o no poder verificar un nombre propio — juzga solo el TEMA (¿es IA?) y la SUSTANCIA ' +
   '(¿aporta algo?), nunca la plausibilidad de nombres frente a lo que tú sabes.\n\n' +
-  'Responde EXACTAMENTE en este formato, cuatro líneas, sin nada más:\n' +
+  'Responde EXACTAMENTE en este formato, cinco líneas, sin nada más:\n' +
   'RELEVANCIA_TEMA: <número del 1 al 5>\n' +
   'VALOR_INFORMATIVO: <número del 1 al 5>\n' +
+  `CATEGORIA: <una sola de estas palabras, la que mejor encaje: ${LISTA_CATEGORIAS}>\n` +
   'RESUMEN: <resumen factual de 2-3 frases en español, con lo más destacado del artículo, sin opinar>\n' +
   'IMPORTA: <1 frase en español, distinta del resumen: por qué le importaría esto a alguien que trabaja con ' +
   'sistemas de IA, agentes, infraestructura de IA o platform engineering — la consecuencia o el "y qué", no otro ' +
@@ -77,7 +79,7 @@ const SISTEMA_RESUMEN =
  * texto completo del artículo (ver articulo.js), se usa en vez del snippet
  * corto del RSS para un resumen con más sustancia.
  *
- * Devuelve { relevante, resumen }. Si algo falla (parseo o la llamada en
+ * Devuelve { relevante, resumen, categoria }. Si algo falla (parseo o la llamada en
  * sí), se prefiere fallar "abierto" — mejor publicar de más que perder una
  * pieza real por un fallo técnico.
  */
@@ -117,19 +119,24 @@ export async function resumir(env, item, fuente, opciones = {}) {
     // (fase 5, ver DEVLOG.md): así paginas.js (estrellas) e index.js (orden)
     // no necesitan tocarse — RELEVANCIA_TEMA es solo la puerta de "esto es
     // de IA de verdad", no se guarda ni se muestra.
+    // CATEGORIA es opcional en el parseo (igual criterio que IMPORTA más abajo):
+    // una respuesta sin esa línea (test, o un modelo que aún no la incluya) no
+    // debe perder el resumen entero.
     const match = texto.match(
-      /RELEVANCIA_TEMA:\s*(\d)[\s\S]*?VALOR_INFORMATIVO:\s*(\d)[\s\S]*?RESUMEN:\s*([\s\S]*?)(?:\n\s*IMPORTA:\s*([\s\S]*))?$/i,
+      /RELEVANCIA_TEMA:\s*(\d)[\s\S]*?VALOR_INFORMATIVO:\s*(\d)[\s\S]*?(?:CATEGORIA:\s*(\S+)[\s\S]*?)?RESUMEN:\s*([\s\S]*?)(?:\n\s*IMPORTA:\s*([\s\S]*))?$/i,
     );
     if (match) {
       const relevanciaTema = parseInt(match[1], 10);
       const relevancia = parseInt(match[2], 10);
-      const resumen = desescapar((match[3] || '').trim());
-      const porQueImporta = match[4] ? desescapar(match[4].trim()) || null : null;
+      const categoriaBruta = (match[3] || '').toLowerCase().replace(/[^a-záéíóúñ]/g, '');
+      const categoria = CATEGORIAS.includes(categoriaBruta) ? categoriaBruta : null;
+      const resumen = desescapar((match[4] || '').trim());
+      const porQueImporta = match[5] ? desescapar(match[5].trim()) || null : null;
       const relevante = relevanciaTema >= RESUMEN.UMBRAL_TEMA && relevancia >= RESUMEN.UMBRAL_RELEVANCIA;
-      return { relevante, resumen: resumen || item.titulo, contexto, relevancia, porQueImporta };
+      return { relevante, resumen: resumen || item.titulo, contexto, relevancia, categoria, porQueImporta };
     }
     // El modelo no siguió el formato: mejor incluirlo con lo que haya que perderlo.
-    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto, relevancia: null, porQueImporta: null };
+    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto, relevancia: null, categoria: null, porQueImporta: null };
   } catch (err) {
     // Si falla la llamada, mejor publicar con el titular que perder la pieza —
     // pero deja rastro en los logs para poder depurarlo (`wrangler tail`).
@@ -412,6 +419,40 @@ export async function generarImporta(env, item, opciones = {}) {
     return desescapar(texto).trim() || null;
   } catch (err) {
     console.error(`[radar] fallo generando IMPORTA retroactivo para "${item.titulo}": ${err.message}`);
+    return null;
+  }
+}
+
+const SISTEMA_CATEGORIA =
+  `Se te da el título y el resumen de una noticia de IA ya publicada en "El Radar". Clasifícala en UNA sola de ` +
+  `estas categorías, la que mejor encaje: ${LISTA_CATEGORIAS}.\n\n` +
+  'Responde EXCLUSIVAMENTE con esa palabra, en minúscula, sin nada más.';
+
+/**
+ * Backfill retroactivo (feature "filtro por categoría"): clasifica una pieza
+ * YA publicada a partir de su título+resumen, igual patrón que
+ * `generarImporta` — sin volver a leer el artículo ni tocar la relevancia ya
+ * decidida. Best-effort: si falla, `null` y la pieza se queda sin categoría.
+ */
+export async function generarCategoria(env, item, opciones = {}) {
+  const { contador = null, pasada = 'sin-pasada' } = opciones;
+  const contenido = `${item.titulo}\n\n${item.resumen}`;
+  try {
+    const { texto, tokensIn, tokensOut } = await llamarHaiku(env, contenido, contador, SISTEMA_CATEGORIA, 20);
+    await registrarLlamada(env, {
+      pasada,
+      modelo: MODELO_HAIKU,
+      proposito: 'categoria_backfill',
+      tokensIn,
+      tokensOut,
+      itemLink: item.link,
+      fuente: item.fuente,
+      resultado: 'ok',
+    });
+    const categoria = desescapar(texto).trim().toLowerCase().replace(/[^a-záéíóúñ]/g, '');
+    return CATEGORIAS.includes(categoria) ? categoria : null;
+  } catch (err) {
+    console.error(`[radar] fallo generando categoría retroactiva para "${item.titulo}": ${err.message}`);
     return null;
   }
 }

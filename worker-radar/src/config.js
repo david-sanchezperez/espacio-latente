@@ -44,6 +44,12 @@ export const INTERESES = {
   ],
 };
 
+// Vocabulario cerrado de categorías (mismo criterio que las tags de
+// obsidian-ideas: cerrado, no lo que el modelo quiera escribir) — permite
+// filtrar el digest en la web sin tocar el pipeline de relevancia, que sigue
+// siendo el filtro de "qué entra", no "de qué trata".
+export const CATEGORIAS = ['modelos', 'agentes', 'infraestructura', 'investigacion', 'producto', 'seguridad'];
+
 export const RESUMEN = {
   LONGITUD_MAXIMA_CONTENIDO: 8000, // caracteres, ~2000 tokens — cubre snippet o artículo completo
   // Dos ejes en vez de un solo número (fase 5, ver DEVLOG.md): el benchmark

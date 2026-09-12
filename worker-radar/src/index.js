@@ -22,12 +22,12 @@
  */
 import { FUENTES, prioridadClase, elegirFuentePrincipal } from './sources.js';
 import { obtenerItems } from './feed.js';
-import { resumir, revisarComoEditor, esReleaseSignificativo, generarPanorama, generarImporta } from './resumen.js';
+import { resumir, revisarComoEditor, esReleaseSignificativo, generarPanorama, generarImporta, generarCategoria } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
-import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap } from './paginas.js';
+import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap, renderHilo } from './paginas.js';
 import { ARCHIVO, COLA, DESCARTADOS, MEMORIA, PRESUPUESTO } from './config.js';
 import { crearContadorSubrequests, registrarMetaPasada, registrarDedup, resumenDia } from './costes.js';
-import { generarEmbeddings, buscarVecinos, guardarVectores, clasificarVecinos } from './memoria.js';
+import { generarEmbeddings, buscarVecinos, guardarVectores, clasificarVecinos, idDesdeLink } from './memoria.js';
 
 const TTL_DIA = ARCHIVO.TTL_DIA_SEGUNDOS;
 
@@ -67,6 +67,15 @@ export default {
       }
       if (partes[0] === 'backfill-fase4' && request.method === 'POST') {
         return await backfillFase4(request, env);
+      }
+      if (partes[0] === 'regenerar-resumenes' && request.method === 'POST') {
+        return await regenerarResumenes(request, env);
+      }
+      if (partes[0] === 'hilo' && partes.length === 2) {
+        return await paginaHilo(env, partes[1]);
+      }
+      if (partes[0] === 'backfill-categorias' && request.method === 'POST') {
+        return await backfillCategorias(request, env);
       }
       return new Response('No encontrado', { status: 404 });
     } catch (err) {
@@ -342,6 +351,116 @@ async function backfillFase4(request, env) {
   );
 }
 
+/**
+ * Backfill de un solo uso: entre el despliegue de fase 5 (commit 2fded68,
+ * 2026-09-06) y la corrección de los secrets que faltaban en el Worker
+ * (`DEEPSEEK_API_KEY` y `ANTHROPIC_API_KEY` — ver DEVLOG.md), los dos jueces
+ * fallaban en el 100% de las piezas y `resumir()`/`revisarComoEditor()`
+ * hicieron fail-open con `resumen: item.titulo` — el "resumen igual que el
+ * título" reportado. Reprocesa solo esas piezas (detectadas por esa firma
+ * exacta) sobre un día ya archivado en KV, re-descargando el artículo y
+ * repitiendo el pipeline real de dos jueces; el resto del día no se toca.
+ *   curl -X POST "https://radar.espacio-latente.com/regenerar-resumenes?fecha=2026-09-08" -H "X-Radar-Secret: ..."
+ */
+async function regenerarResumenes(request, env) {
+  if (!autorizado(request, env)) return respuestaNoAutorizado();
+  const fecha = new URL(request.url).searchParams.get('fecha') || fechaISO(0);
+  const contador = crearContadorSubrequests();
+  const pasada = `regenerar-resumenes-${fecha}`;
+  const items = await leerDia(env, fecha);
+
+  let regenerados = 0;
+  let descartadosAhora = 0;
+  let cambios = false;
+  const restantes = [];
+
+  for (const item of items) {
+    if (item.resumen !== item.titulo || contador.externos >= PRESUPUESTO.SUBREQUESTS_DURO) {
+      restantes.push(item); // ya tiene un resumen real, o se acabó el presupuesto: no tocar
+      continue;
+    }
+
+    const fuenteFicticia = { nombre: item.fuente };
+    const textoArticulo = await obtenerTextoArticulo(item.link, contador);
+    const primerJuez = await resumir(env, item, fuenteFicticia, {
+      proveedor: 'deepseek',
+      textoArticulo,
+      contador,
+      pasada,
+    });
+    if (!primerJuez.relevante) {
+      // No la habríamos publicado nunca de no ser por el fallo de los secrets
+      // (fail-open de `resumir()`): al no haber permalink por pieza (solo el
+      // archivo del día), retirarla del todo es más correcto que dejarla con
+      // el título repetido para siempre.
+      descartadosAhora++;
+      cambios = true;
+      continue;
+    }
+    const segundoJuez = await revisarComoEditor(env, item, fuenteFicticia, primerJuez, { textoArticulo, contador, pasada });
+    if (!segundoJuez.aprobado) {
+      descartadosAhora++;
+      cambios = true;
+      continue;
+    }
+    item.resumen = segundoJuez.resumen;
+    item.relevancia = primerJuez.relevancia ?? item.relevancia ?? null;
+    if (primerJuez.categoria) item.categoria = primerJuez.categoria;
+    if (primerJuez.porQueImporta) item.porQueImporta = primerJuez.porQueImporta;
+    regenerados++;
+    cambios = true;
+    restantes.push(item);
+  }
+
+  if (cambios) {
+    await env.RADAR_KV.put(`radar:items:${fecha}`, JSON.stringify(restantes), { expirationTtl: TTL_DIA });
+  }
+
+  const pendientes = restantes.filter((it) => it.resumen === it.titulo).length;
+  return new Response(
+    JSON.stringify({ fecha, totalItems: restantes.length, regenerados, descartadosAhora, pendientes }, null, 2),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Backfill retroactivo de la categoría (feature "filtro por categoría",
+ * añadida después de que este día ya se hubiera publicado): clasifica con
+ * `generarCategoria` (Haiku, título+resumen, sin releer el artículo) solo
+ * las piezas de un día que aún no tengan `categoria`.
+ *   curl -X POST "https://radar.espacio-latente.com/backfill-categorias?fecha=2026-09-07" -H "X-Radar-Secret: ..."
+ */
+async function backfillCategorias(request, env) {
+  if (!autorizado(request, env)) return respuestaNoAutorizado();
+  const fecha = new URL(request.url).searchParams.get('fecha') || fechaISO(0);
+  const contador = crearContadorSubrequests();
+  const pasada = `backfill-categorias-${fecha}`;
+  const items = await leerDia(env, fecha);
+
+  let clasificados = 0;
+  let cambios = false;
+
+  for (const item of items) {
+    if (item.categoria || contador.externos >= PRESUPUESTO.SUBREQUESTS_DURO) continue;
+    const categoria = await generarCategoria(env, item, { contador, pasada });
+    if (categoria) {
+      item.categoria = categoria;
+      clasificados++;
+      cambios = true;
+    }
+  }
+
+  if (cambios) {
+    await env.RADAR_KV.put(`radar:items:${fecha}`, JSON.stringify(items), { expirationTtl: TTL_DIA });
+  }
+
+  const pendientes = items.filter((it) => !it.categoria).length;
+  return new Response(
+    JSON.stringify({ fecha, totalItems: items.length, clasificados, pendientes }, null, 2),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
 function autorizado(request, env) {
   const secreto = request.headers.get('X-Radar-Secret');
   return Boolean(env.RADAR_SECRET) && comparacionSegura(secreto, env.RADAR_SECRET);
@@ -385,6 +504,17 @@ async function paginaDia(env, fecha) {
     renderDigest({ hoy: fecha, ayer: null, itemsHoy: items, itemsAyer: [], soloUnDia: true, panoramaHoy, costesHoy }),
     { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
+}
+
+async function paginaHilo(env, historiaId) {
+  const entradas = await leerHilo(env, historiaId);
+  if (!entradas.length) {
+    return new Response(renderError('Ese hilo no existe o todavía no tiene más de una entrega.'), {
+      status: 404,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+  return new Response(renderHilo(entradas), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
 async function paginaFeed(env, origen) {
@@ -434,6 +564,29 @@ async function anotarDescartados(env, fecha, links) {
   await env.RADAR_KV.put(`radar:descartados:${fecha}`, JSON.stringify(union), {
     expirationTtl: DESCARTADOS.TTL_SEGUNDOS,
   });
+}
+
+/**
+ * Hilo navegable: lista cronológica de todas las piezas que comparten un
+ * `historiaId` (ver `resumir`/pipeline principal), para que `/hilo/:id`
+ * pueda mostrar "esta historia lleva N entregas" en vez de la frase suelta
+ * de contexto que ya había. `raiz` es la pieza de contexto (la que ya estaba
+ * publicada): solo se añade la primera vez que este hilo se anota, para no
+ * duplicarla en cada nueva entrega.
+ */
+async function anotarHilo(env, historiaId, raiz, actual) {
+  const clave = `radar:hilo:${historiaId}`;
+  const lista = JSON.parse((await env.RADAR_KV.get(clave)) || '[]');
+  if (!lista.some((e) => e.link === raiz.link)) {
+    lista.push({ titulo: raiz.titulo, link: raiz.link, fecha: raiz.fecha || null });
+  }
+  lista.push({ titulo: actual.titulo, link: actual.link, fecha: actual.fecha });
+  await env.RADAR_KV.put(clave, JSON.stringify(lista), { expirationTtl: ARCHIVO.TTL_DIA_SEGUNDOS });
+}
+
+async function leerHilo(env, historiaId) {
+  const raw = await env.RADAR_KV.get(`radar:hilo:${historiaId}`);
+  return raw ? JSON.parse(raw) : [];
 }
 
 /**
@@ -661,7 +814,7 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
         continue;
       }
 
-      const { contexto, relevancia, porQueImporta } = primerJuez;
+      const { contexto, relevancia, categoria, porQueImporta } = primerJuez;
       const resumen = segundoJuez.resumen;
       const nuevo = {
         titulo: item.titulo,
@@ -671,8 +824,22 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
         fecha: item.fecha || new Date().toISOString(),
         relevancia: relevancia ?? null,
       };
-      if (contexto) nuevo.contexto = { titulo: contexto.titulo, link: contexto.link };
+      if (categoria) nuevo.categoria = categoria;
       if (porQueImporta) nuevo.porQueImporta = porQueImporta;
+      if (contexto) {
+        nuevo.contexto = { titulo: contexto.titulo, link: contexto.link };
+        // Hilo navegable: hereda el id del hilo de la pieza de contexto si ya
+        // tenía uno, o lo crea a partir de SU link — así cualquier pieza
+        // futura que enlace a esta llega al mismo id sin coordinación extra
+        // (ver `idDesdeLink` en memoria.js). Best-effort: un fallo aquí no
+        // debe perder la pieza, solo el hilo se queda sin anotar.
+        try {
+          nuevo.historiaId = contexto.historiaId || (await idDesdeLink(contexto.link));
+          await anotarHilo(env, nuevo.historiaId, contexto, nuevo);
+        } catch (err) {
+          console.error(`[radar] fallo anotando hilo para "${nuevo.titulo}": ${err.message}`);
+        }
+      }
       nuevos.push(nuevo);
       publicados++;
 
@@ -681,7 +848,13 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
       // descartado por baja relevancia. Se acumulan y se insertan de una vez
       // al cerrar la pasada (ver `guardarVectores`).
       if (embedding) {
-        vectoresPendientes.push({ link: item.link, titulo: item.titulo, fecha: nuevo.fecha, vector: embedding });
+        vectoresPendientes.push({
+          link: item.link,
+          titulo: item.titulo,
+          fecha: nuevo.fecha,
+          historiaId: nuevo.historiaId || null,
+          vector: embedding,
+        });
       }
     }
 

@@ -215,6 +215,9 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
   comprobar('Contexto: se publica con enlace al artículo relacionado', guardados[0].contexto?.link, 'https://ejemplo.test/vieja');
   comprobar('Contexto: el título del contexto viene del dato real, no del modelo', guardados[0].contexto?.titulo, 'Primera parte');
+  comprobar('Hilo: la pieza nueva lleva historiaId', typeof guardados[0].historiaId, 'string');
+  const hilo = JSON.parse(almacen.get(`radar:hilo:${guardados[0].historiaId}`) || '[]');
+  comprobar('Hilo: se anota con la raíz + la nueva entrega', hilo.map((e) => e.link).join(','), 'https://ejemplo.test/vieja,https://ejemplo.test/nueva');
 }
 
 // --- 6. Fuente caída: no tumba la pasada, queda registrada ---

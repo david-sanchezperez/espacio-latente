@@ -33,6 +33,12 @@ const ESTILO = `
     text-transform: uppercase; letter-spacing: 0.06em; color: var(--ambar);
   }
   .pieza .estrellas { font-size: 0.8rem; color: var(--ambar); letter-spacing: 0.05em; white-space: nowrap; }
+  .pieza .cola-cabecera { display: flex; align-items: baseline; gap: 0.6rem; }
+  .pieza .categoria {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--acero);
+    border: 1px solid var(--borde); border-radius: 999px; padding: 0.1rem 0.5rem;
+  }
   .pieza h3 { font-size: 1.05rem; font-weight: 600; margin: 0.3rem 0 0.4rem; }
   .pieza h3 a { color: var(--hueso); }
   .pieza h3 a:hover { color: var(--ambar); }
@@ -40,6 +46,17 @@ const ESTILO = `
   .pieza .contexto { font-size: 0.82rem; font-style: italic; margin-top: 0.5rem; }
   .pieza .importa { font-size: 0.88rem; margin-top: 0.5rem; border-left: 2px solid var(--ambar); padding-left: 0.6rem; }
   .pieza .importa strong { color: var(--hueso); }
+  .filtros { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .filtros button {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--acero);
+    background: var(--panel); border: 1px solid var(--borde); border-radius: 999px;
+    padding: 0.35rem 0.8rem; cursor: pointer;
+  }
+  .filtros button.activo { color: var(--grafito); background: var(--ambar); border-color: var(--ambar); }
+  .hilo-lista { list-style: none; }
+  .hilo-lista li { border-bottom: 1px solid var(--borde); padding: 0.9rem 0; }
+  .hilo-lista .fecha-hilo { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.72rem; color: var(--acero); }
   .panorama {
     background: var(--panel-alt); border: 1px solid var(--borde); border-left: 3px solid var(--ambar);
     padding: 1.1rem 1.25rem; margin-bottom: 2.5rem;
@@ -124,15 +141,22 @@ function renderEstrellas(relevancia) {
 function renderPieza(item) {
   const fuentes = [item.fuente, ...(item.fuentesAdicionales || [])].join(' · ');
   const estrellas = renderEstrellas(item.relevancia);
+  const categoria = item.categoria ? `<span class="categoria">${escapar(item.categoria)}</span>` : '';
+  const verHilo = item.historiaId
+    ? ` · <a href="/hilo/${escapar(item.historiaId)}">ver hilo completo</a>`
+    : '';
   const contexto = item.contexto
-    ? `<p class="contexto">↳ Contexto: <a href="${escapar(item.contexto.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.contexto.titulo)}</a></p>`
+    ? `<p class="contexto">↳ Contexto: <a href="${escapar(item.contexto.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.contexto.titulo)}</a>${verHilo}</p>`
     : '';
   const importa = item.porQueImporta
     ? `<p class="importa"><strong>Por qué importa:</strong> ${escapar(item.porQueImporta)}</p>`
     : '';
-  return `<article class="pieza">
+  return `<article class="pieza" data-categoria="${escapar(item.categoria || '')}">
     <div class="cabecera-pieza">
-      <span class="fuente">${escapar(fuentes)}</span>
+      <div class="cola-cabecera">
+        <span class="fuente">${escapar(fuentes)}</span>
+        ${categoria}
+      </div>
       ${estrellas}
     </div>
     <h3><a href="${escapar(item.link)}" target="_blank" rel="noopener noreferrer">${escapar(item.titulo)}</a></h3>
@@ -165,15 +189,61 @@ function renderCoste(costes) {
     y ${miles(costes.tokensOut)} de salida en ${miles(costes.llamadas)} llamadas a modelos — unos ${usd} $.</p>`;
 }
 
+/**
+ * Filtro por categoría en el cliente (sin ruta ni backend nuevos): las
+ * piezas ya llevan `data-categoria` (`renderPieza`), así que solo hace falta
+ * una lista de botones y un `[hidden]` por clic. Si no hay ninguna pieza con
+ * categoría (piezas viejas, o el modelo no la devolvió), no se pinta nada.
+ */
+function renderFiltros(items) {
+  const categorias = [...new Set(items.map((it) => it.categoria).filter(Boolean))].sort();
+  if (!categorias.length) return '';
+  const botones = categorias
+    .map((c) => `<button type="button" data-cat="${escapar(c)}">${escapar(c)}</button>`)
+    .join('');
+  return `<div class="filtros" data-filtros>
+    <button type="button" data-cat="todas" class="activo">Todas</button>
+    ${botones}
+  </div>
+  <script>
+    document.querySelectorAll('[data-filtros] button').forEach(function (boton) {
+      boton.addEventListener('click', function () {
+        document.querySelectorAll('[data-filtros] button').forEach(function (b) { b.classList.remove('activo'); });
+        boton.classList.add('activo');
+        var cat = boton.dataset.cat;
+        document.querySelectorAll('.pieza').forEach(function (pieza) {
+          pieza.hidden = cat !== 'todas' && pieza.dataset.categoria !== cat;
+        });
+      });
+    });
+  </script>`;
+}
+
 export function renderDigest({ hoy, ayer, itemsHoy, itemsAyer, soloUnDia, panoramaHoy, costesHoy }) {
   const panorama = panoramaHoy
     ? `<section class="panorama"><h2>Panorama de hoy</h2><p>${escapar(panoramaHoy)}</p></section>`
     : '';
+  const filtros = renderFiltros([...itemsHoy, ...itemsAyer]);
   const cuerpo =
-    panorama + (soloUnDia
+    panorama + filtros + (soloUnDia
       ? renderSeccion(hoy, itemsHoy, renderCoste(costesHoy))
       : renderSeccion(`Hoy · ${hoy}`, itemsHoy, renderCoste(costesHoy)) + renderSeccion(`Ayer · ${ayer}`, itemsAyer));
   return envoltorio(soloUnDia ? hoy : 'Hoy', cuerpo, soloUnDia ? `/archivo/${hoy}` : '/');
+}
+
+/** Página de un hilo: todas las entregas de una misma historia, en orden cronológico. */
+export function renderHilo(entradas) {
+  const ordenadas = [...entradas].sort((a, b) => new Date(a.fecha || 0) - new Date(b.fecha || 0));
+  const items = ordenadas
+    .map(
+      (e) => `<li>
+        ${e.fecha ? `<div class="fecha-hilo">${escapar(new Date(e.fecha).toISOString().slice(0, 10))}</div>` : ''}
+        <a href="${escapar(e.link)}" target="_blank" rel="noopener noreferrer">${escapar(e.titulo)}</a>
+      </li>`
+    )
+    .join('');
+  const cuerpo = `<section class="seccion"><h2>Hilo · ${ordenadas.length} entregas</h2><ul class="hilo-lista">${items}</ul></section>`;
+  return envoltorio('Hilo', cuerpo);
 }
 
 export function renderArchivoIndice(fechas) {
