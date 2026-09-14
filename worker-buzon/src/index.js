@@ -132,7 +132,7 @@ export default {
         Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-flash',
         thinking: { type: 'disabled' }, // probado a mano: sin esto puede gastar todo max_tokens "pensando"
         max_tokens: 400,
         temperature: 0.4,

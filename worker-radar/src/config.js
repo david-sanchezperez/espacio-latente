@@ -11,9 +11,12 @@ export const MODELOS = {
   HAIKU: 'claude-haiku-4-5',
   EMBEDDING: '@cf/baai/bge-m3',
   // Candidato de coste evaluado en fase 4 (ver DEVLOG.md) — solo se ejerce
-  // vía /comparar, igual que Workers AI antes de fase 1. Precio verificado en
-  // api-docs.deepseek.com el 2026-09-06, no de memoria: revisar si cambia.
-  DEEPSEEK_FLASH: 'deepseek-v4-flash',
+  // vía /comparar, igual que Workers AI antes de fase 1. Migrado a V4.1 el
+  // 13/09/2026 (más barato y mejor rendimiento que V4 Flash). DeepSeek
+  // retiró el id versionado "v4-flash": el id canónico ahora es
+  // "deepseek-flash" (rolling alias a su Flash vigente, verificado
+  // llamando directo a la API el 13/09/2026).
+  DEEPSEEK_FLASH: 'deepseek-flash',
 };
 
 // USD por token, de la documentación de precios de cada proveedor (no por
@@ -24,7 +27,9 @@ export const MODELOS = {
 export const PRECIOS_USD_POR_TOKEN = {
   [MODELOS.WORKERS_AI]: { entrada: 0.051 / 1_000_000, salida: 0.34 / 1_000_000 },
   [MODELOS.HAIKU]: { entrada: 1 / 1_000_000, salida: 5 / 1_000_000 },
-  [MODELOS.DEEPSEEK_FLASH]: { entrada: 0.14 / 1_000_000, salida: 0.28 / 1_000_000 },
+  // Off-peak (mitad del precio pico) — mismo criterio que antes de asumir el
+  // caso más barato como referencia de coste guardado.
+  [MODELOS.DEEPSEEK_FLASH]: { entrada: 0.15 / 1_000_000, salida: 0.60 / 1_000_000 },
 };
 
 // Fase 4 de v0.2 (ver DEVLOG.md): perfil de interés de Espacio Latente,
