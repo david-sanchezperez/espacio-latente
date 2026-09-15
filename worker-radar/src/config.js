@@ -66,7 +66,12 @@ export const RESUMEN = {
   // sigue siendo sobre valor informativo, para no romper el campo `relevancia`
   // ya usado en `paginas.js` (estrellas) e `index.js` (orden del panorama).
   UMBRAL_TEMA: 3, // 1-5; por debajo, no es una pieza de IA central aunque la mencione
-  UMBRAL_RELEVANCIA: 4, // 1-5; valor informativo — a partir de aquí se considera "relevante" y se publica
+  // Bajado de 4 a 3 el 15/09/2026: con 4, en una muestra real de 26 candidatos
+  // que llegaron al primer juez en 2 días, solo 5 pasaron — un digest que se
+  // queda en silencio días seguidos deja de servir como radar diario. 3 sigue
+  // exigiendo "aporta algo", solo deja de descartar lo "correcto pero
+  // previsible" (ver docstring de VALOR_INFORMATIVO en resumen.js).
+  UMBRAL_RELEVANCIA: 3, // 1-5; valor informativo — a partir de aquí se considera "relevante" y se publica
 };
 
 export const ARCHIVO = {
@@ -84,11 +89,15 @@ export const DESCARTADOS = {
 };
 
 // Migración a Queues (ver DEVLOG.md): tamaño de lote de fuentes por mensaje.
-// Con 5 fuentes + sus items nuevos por mensaje, el peor caso observado en
-// producción (28 fuentes/31 items en una sola invocación = 59 subrequests)
-// queda repartido en lotes muy por debajo del límite de 50.
+// Bajado de 5 a 3 el 15/09/2026: un lote de 5 SÍ llegó a cortarse por tope de
+// subrequests en producción (pasada 2026-09-14-pm, confirmado en vivo con
+// `wrangler tail` — 45 subrequests, 0 items llegaron siquiera a los jueces de
+// relevancia). El supuesto original (28 fuentes/31 items = 59 subrequests
+// repartido en lotes de 5 basta) no cuenta con que unas pocas fuentes con
+// muchos items nuevos concentren el gasto en un único lote. Con 3 hace falta
+// mucha más densidad de items por fuente para repetir el corte.
 export const COLA = {
-  FUENTES_POR_LOTE: 5,
+  FUENTES_POR_LOTE: 3,
   // Retraso del mensaje de cierre de pasada (panorama) respecto a los lotes
   // de fuentes. Queues no garantiza orden de entrega, así que el panorama no
   // se encola "el último": se encola retrasado, para que los lotes hayan
