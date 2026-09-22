@@ -18,3 +18,4 @@ worker-radar/node_modules/
 
 # sistema
 .DS_Store
+.claude/
