@@ -96,7 +96,9 @@ export async function resumir(env, item, fuente, opciones = {}) {
   try {
     const { texto, tokensIn, tokensOut } =
       proveedor === 'haiku'
-        ? await llamarHaiku(env, contenidoUsuario, contador)
+        ? // 400 (antes: 300 por defecto): con RESUMEN de 2-3 frases largo, IMPORTA
+          // se quedaba sin presupuesto de tokens y salía cortado a mitad de frase.
+          await llamarHaiku(env, contenidoUsuario, contador, SISTEMA_RESUMEN, 400)
         : proveedor === 'deepseek'
           ? await llamarDeepSeek(env, contenidoUsuario, contador)
           : await llamarWorkersAI(env, contenidoUsuario);
