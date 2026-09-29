@@ -357,11 +357,23 @@ async function backfillFase4(request, env) {
  * (`DEEPSEEK_API_KEY` y `ANTHROPIC_API_KEY` — ver DEVLOG.md), los dos jueces
  * fallaban en el 100% de las piezas y `resumir()`/`revisarComoEditor()`
  * hicieron fail-open con `resumen: item.titulo` — el "resumen igual que el
- * título" reportado. Reprocesa solo esas piezas (detectadas por esa firma
- * exacta) sobre un día ya archivado en KV, re-descargando el artículo y
- * repitiendo el pipeline real de dos jueces; el resto del día no se toca.
+ * título" reportado. Reprocesa esas piezas (esa firma exacta) MÁS las que
+ * tengan RESUMEN o IMPORTA cortados a mitad de frase por falta de tokens
+ * (bug de maxTokens en la rama 'deepseek' de resumir(), arreglado en
+ * 7169a44 — ver `pareceTruncado`) sobre un día ya archivado en KV,
+ * re-descargando el artículo y repitiendo el pipeline real de dos jueces;
+ * el resto del día no se toca.
  *   curl -X POST "https://radar.espacio-latente.com/regenerar-resumenes?fecha=2026-09-08" -H "X-Radar-Secret: ..."
  */
+
+// Un texto cortado por falta de tokens (no por decisión del modelo) casi
+// nunca termina en puntuación de cierre de frase — es la misma señal que
+// reportó David a simple vista ("...frente a" sin punto final).
+const TERMINA_FRASE = /[.!?…»"')\]]$/;
+function pareceTruncado(texto) {
+  return Boolean(texto) && !TERMINA_FRASE.test(texto.trim());
+}
+
 async function regenerarResumenes(request, env) {
   if (!autorizado(request, env)) return respuestaNoAutorizado();
   const fecha = new URL(request.url).searchParams.get('fecha') || fechaISO(0);
@@ -375,8 +387,10 @@ async function regenerarResumenes(request, env) {
   const restantes = [];
 
   for (const item of items) {
-    if (item.resumen !== item.titulo || contador.externos >= PRESUPUESTO.SUBREQUESTS_DURO) {
-      restantes.push(item); // ya tiene un resumen real, o se acabó el presupuesto: no tocar
+    const necesitaRegenerar =
+      item.resumen === item.titulo || pareceTruncado(item.resumen) || pareceTruncado(item.porQueImporta);
+    if (!necesitaRegenerar || contador.externos >= PRESUPUESTO.SUBREQUESTS_DURO) {
+      restantes.push(item); // ya tiene un resumen real y completo, o se acabó el presupuesto: no tocar
       continue;
     }
 
@@ -416,7 +430,9 @@ async function regenerarResumenes(request, env) {
     await env.RADAR_KV.put(`radar:items:${fecha}`, JSON.stringify(restantes), { expirationTtl: TTL_DIA });
   }
 
-  const pendientes = restantes.filter((it) => it.resumen === it.titulo).length;
+  const pendientes = restantes.filter(
+    (it) => it.resumen === it.titulo || pareceTruncado(it.resumen) || pareceTruncado(it.porQueImporta)
+  ).length;
   return new Response(
     JSON.stringify({ fecha, totalItems: restantes.length, regenerados, descartadosAhora, pendientes }, null, 2),
     { headers: { 'Content-Type': 'application/json' } }
