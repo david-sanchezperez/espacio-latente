@@ -95,12 +95,14 @@ export async function resumir(env, item, fuente, opciones = {}) {
 
   try {
     const { texto, tokensIn, tokensOut } =
+      // 400 (antes: 300 por defecto): con RESUMEN de 2-3 frases largo, IMPORTA
+      // se quedaba sin presupuesto de tokens y salía cortado a mitad de frase.
+      // El fix de 74a0e52 solo tocó la rama 'haiku'; producción usa 'deepseek'
+      // como primer juez (ver index.js), así que el corte seguía ahí.
       proveedor === 'haiku'
-        ? // 400 (antes: 300 por defecto): con RESUMEN de 2-3 frases largo, IMPORTA
-          // se quedaba sin presupuesto de tokens y salía cortado a mitad de frase.
-          await llamarHaiku(env, contenidoUsuario, contador, SISTEMA_RESUMEN, 400)
+        ? await llamarHaiku(env, contenidoUsuario, contador, SISTEMA_RESUMEN, 400)
         : proveedor === 'deepseek'
-          ? await llamarDeepSeek(env, contenidoUsuario, contador)
+          ? await llamarDeepSeek(env, contenidoUsuario, contador, SISTEMA_RESUMEN, 400)
           : await llamarWorkersAI(env, contenidoUsuario);
 
     await registrarLlamada(env, {
