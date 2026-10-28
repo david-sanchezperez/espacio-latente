@@ -249,28 +249,33 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   comprobar('Prioridad de clase: Hacker News (comunidad) queda como fuente adicional', (guardados[0].fuentesAdicionales || []).join(','), 'Hacker News');
 }
 
-// --- 8. Fase 4: se guarda el campo IMPORTA cuando el modelo lo devuelve ---
+// --- 8. Fase 4 (rehecho tras separar IMPORTA de RESUMEN en dos llamadas,
+// ver DEVLOG.md): se guarda el campo IMPORTA, generado en su propia llamada
+// sobre el RESUMEN ya editado — no en la respuesta del primer juez ---
 {
-  const { env, almacen } = crearEntorno({
+  const { env, almacen, registro } = crearEntorno({
     feeds: { 'https://ejemplo.test/a.xml': [{ titulo: 'Noticia con contexto', link: 'https://ejemplo.test/importa' }] },
   });
-  // Sobrescribimos la respuesta falsa del primer juez (DeepSeek) para incluir
-  // la cuarta línea — IMPORTA lo produce el primer juez, no el editor.
+  // api.anthropic.com sirve dos propósitos distintos ahora (editor adversarial
+  // Y generarImporta): hay que discriminar por el `system` prompt enviado,
+  // igual que lo haría el propio proveedor real.
   const fetchOriginal = globalThis.fetch;
   globalThis.fetch = async (url, opciones) => {
-    if (String(url).includes('api.deepseek.com')) {
+    if (String(url).includes('api.anthropic.com')) {
+      registro.haiku++;
+      const { system } = JSON.parse(opciones.body);
+      const esImporta = system.includes('Escribe UNA sola frase');
       return {
         ok: true,
         async json() {
           return {
-            choices: [{
-              message: {
-                content:
-                  'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nRESUMEN: Resumen de prueba.\n' +
-                  'IMPORTA: Cambia cómo se sirven agentes en producción.',
-              },
+            content: [{
+              type: 'text',
+              text: esImporta
+                ? 'Cambia cómo se sirven agentes en producción.'
+                : 'APROBADO: si\nRESUMEN: Resumen de prueba.',
             }],
-            usage: { prompt_tokens: 20, completion_tokens: 8 },
+            usage: { input_tokens: 10, output_tokens: 5 },
           };
         },
       };
@@ -279,7 +284,8 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   };
   await ejecutarDigest(env, [FUENTE_A], `${HOY}-test`);
   const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
-  comprobar('IMPORTA: se guarda el campo cuando el modelo lo devuelve', guardados[0].porQueImporta, 'Cambia cómo se sirven agentes en producción.');
+  comprobar('IMPORTA: se guarda el campo, generado aparte del primer juez', guardados[0].porQueImporta, 'Cambia cómo se sirven agentes en producción.');
+  comprobar('IMPORTA: el RESUMEN no arrastra la línea IMPORTA (campos ya no comparten llamada)', guardados[0].resumen, 'Resumen de prueba.');
   globalThis.fetch = fetchOriginal;
 }
 

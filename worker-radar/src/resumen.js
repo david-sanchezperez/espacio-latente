@@ -23,14 +23,11 @@ const SISTEMA_RESUMEN =
   'esta pieza puede ser noticia, no un motivo para dudar de ella. NUNCA bajes la relevancia ni cuestiones la ' +
   'pieza por no reconocer o no poder verificar un nombre propio — juzga solo el TEMA (¿es IA?) y la SUSTANCIA ' +
   '(¿aporta algo?), nunca la plausibilidad de nombres frente a lo que tú sabes.\n\n' +
-  'Responde EXACTAMENTE en este formato, cinco líneas, sin nada más:\n' +
+  'Responde EXACTAMENTE en este formato, cuatro líneas, sin nada más:\n' +
   'RELEVANCIA_TEMA: <número del 1 al 5>\n' +
   'VALOR_INFORMATIVO: <número del 1 al 5>\n' +
   `CATEGORIA: <una sola de estas palabras, la que mejor encaje: ${LISTA_CATEGORIAS}>\n` +
-  'RESUMEN: <resumen factual de 2-3 frases en español, con lo más destacado del artículo, sin opinar>\n' +
-  'IMPORTA: <1 frase en español, distinta del resumen: por qué le importaría esto a alguien que trabaja con ' +
-  'sistemas de IA, agentes, infraestructura de IA o platform engineering — la consecuencia o el "y qué", no otro ' +
-  'dato del artículo>\n\n' +
+  'RESUMEN: <resumen factual de 2-3 frases en español, con lo más destacado del artículo, sin opinar>\n\n' +
   'RELEVANCIA_TEMA y VALOR_INFORMATIVO son preguntas DISTINTAS, no las mezcles:\n' +
   '- RELEVANCIA_TEMA: ¿el tema central es IA/ML/LLMs? (ver criterio de tema más abajo)\n' +
   '- VALOR_INFORMATIVO: aunque el tema encaje de lleno con la audiencia, ¿este artículo concreto aporta algo que ' +
@@ -79,9 +76,14 @@ const SISTEMA_RESUMEN =
  * texto completo del artículo (ver articulo.js), se usa en vez del snippet
  * corto del RSS para un resumen con más sustancia.
  *
- * Devuelve { relevante, resumen, categoria }. Si algo falla (parseo o la llamada en
- * sí), se prefiere fallar "abierto" — mejor publicar de más que perder una
- * pieza real por un fallo técnico.
+ * Devuelve { relevante, resumen, categoria }. IMPORTA ya no se pide en esta
+ * llamada — se genera aparte con `generarImporta`, una vez que el editor
+ * adversarial ya fijó el RESUMEN definitivo (ver `ejecutarDigest` en
+ * index.js), con su propio presupuesto de tokens dedicado en vez de
+ * compartirlo con RESUMEN en una sola respuesta.
+ *
+ * Si algo falla (parseo o la llamada en sí), se prefiere fallar "abierto" —
+ * mejor publicar de más que perder una pieza real por un fallo técnico.
  */
 export async function resumir(env, item, fuente, opciones = {}) {
   const { proveedor = 'workers-ai', textoArticulo, contador = null, pasada = 'sin-pasada', contexto = null } = opciones;
@@ -95,10 +97,13 @@ export async function resumir(env, item, fuente, opciones = {}) {
 
   try {
     const { texto, tokensIn, tokensOut } =
-      // 400 (antes: 300 por defecto): con RESUMEN de 2-3 frases largo, IMPORTA
-      // se quedaba sin presupuesto de tokens y salía cortado a mitad de frase.
-      // El fix de 74a0e52 solo tocó la rama 'haiku'; producción usa 'deepseek'
-      // como primer juez (ver index.js), así que el corte seguía ahí.
+      // IMPORTA ya NO se pide aquí (ver `generarImporta`, llamada aparte tras
+      // la edición final) — antes compartía este mismo presupuesto con
+      // RESUMEN en una sola respuesta y, con un RESUMEN largo, se quedaba sin
+      // tokens y salía cortado a mitad de frase (bug visto en producción
+      // incluso tras subir el tope a 400, porque el problema era compartir
+      // presupuesto entre dos campos de longitud variable, no el tamaño del
+      // tope). 400 se mantiene solo como margen de seguridad para RESUMEN.
       proveedor === 'haiku'
         ? await llamarHaiku(env, contenidoUsuario, contador, SISTEMA_RESUMEN, 400)
         : proveedor === 'deepseek'
@@ -116,18 +121,14 @@ export async function resumir(env, item, fuente, opciones = {}) {
       resultado: 'ok',
     });
 
-    // IMPORTA es opcional en el parseo (aunque el prompt lo pida siempre): un
-    // resumen de antes de este cambio, o un modelo que no lo incluya, no
-    // debe romper el resto — mismo criterio que ya se aplicaba a los ejes.
     // `relevancia` en el valor de retorno sigue siendo VALOR_INFORMATIVO
     // (fase 5, ver DEVLOG.md): así paginas.js (estrellas) e index.js (orden)
     // no necesitan tocarse — RELEVANCIA_TEMA es solo la puerta de "esto es
     // de IA de verdad", no se guarda ni se muestra.
-    // CATEGORIA es opcional en el parseo (igual criterio que IMPORTA más abajo):
-    // una respuesta sin esa línea (test, o un modelo que aún no la incluya) no
-    // debe perder el resumen entero.
+    // CATEGORIA es opcional en el parseo: una respuesta sin esa línea (test,
+    // o un modelo que aún no la incluya) no debe perder el resumen entero.
     const match = texto.match(
-      /RELEVANCIA_TEMA:\s*(\d)[\s\S]*?VALOR_INFORMATIVO:\s*(\d)[\s\S]*?(?:CATEGORIA:\s*(\S+)[\s\S]*?)?RESUMEN:\s*([\s\S]*?)(?:\n\s*IMPORTA:\s*([\s\S]*))?$/i,
+      /RELEVANCIA_TEMA:\s*(\d)[\s\S]*?VALOR_INFORMATIVO:\s*(\d)[\s\S]*?(?:CATEGORIA:\s*(\S+)[\s\S]*?)?RESUMEN:\s*([\s\S]*)$/i,
     );
     if (match) {
       const relevanciaTema = parseInt(match[1], 10);
@@ -135,12 +136,11 @@ export async function resumir(env, item, fuente, opciones = {}) {
       const categoriaBruta = (match[3] || '').toLowerCase().replace(/[^a-záéíóúñ]/g, '');
       const categoria = CATEGORIAS.includes(categoriaBruta) ? categoriaBruta : null;
       const resumen = desescapar((match[4] || '').trim());
-      const porQueImporta = match[5] ? desescapar(match[5].trim()) || null : null;
       const relevante = relevanciaTema >= RESUMEN.UMBRAL_TEMA && relevancia >= RESUMEN.UMBRAL_RELEVANCIA;
-      return { relevante, resumen: resumen || item.titulo, contexto, relevancia, categoria, porQueImporta };
+      return { relevante, resumen: resumen || item.titulo, contexto, relevancia, categoria };
     }
     // El modelo no siguió el formato: mejor incluirlo con lo que haya que perderlo.
-    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto, relevancia: null, categoria: null, porQueImporta: null };
+    return { relevante: true, resumen: desescapar(texto) || item.titulo, contexto, relevancia: null, categoria: null };
   } catch (err) {
     // Si falla la llamada, mejor publicar con el titular que perder la pieza —
     // pero deja rastro en los logs para poder depurarlo (`wrangler tail`).
@@ -359,10 +359,14 @@ const SISTEMA_PANORAMA =
 /**
  * Síntesis del día (no evaluación por pieza, ver `resumir`): una llamada más
  * a Haiku sobre lo ya publicado hoy, para dar una vista de conjunto antes de
- * la lista pieza a pieza. Best-effort: si falla o no hay items, `null` — el
- * digest se sirve igual sin panorama, no es una pieza crítica del pipeline.
+ * la lista pieza a pieza. Best-effort: si falla, se queda cortado tras un
+ * reintento, o no hay items, `null` — el digest se sirve igual sin panorama,
+ * mejor eso que publicar una frase a medias (bug visto en producción: este
+ * camino nunca estuvo cubierto por la detección de truncado de `resumir()`,
+ * tenía su propio presupuesto de tokens fijo y aparte).
  */
 const PANORAMA_MAX_ITEMS = 25; // más allá de esto el prompt crece demasiado y el modelo tiende a divagar
+const PANORAMA_MAX_TOKENS = [420, 650]; // 260 original se quedaba corto con 4 frases técnicas; reintento generoso antes de rendirse
 
 export async function generarPanorama(env, items, opciones = {}) {
   const { contador = null, pasada = 'sin-pasada' } = opciones;
@@ -373,23 +377,30 @@ export async function generarPanorama(env, items, opciones = {}) {
     .sort((a, b) => (b.relevancia ?? 0) - (a.relevancia ?? 0))
     .slice(0, PANORAMA_MAX_ITEMS);
   const listado = seleccion.map((it, i) => `${i + 1}. ${it.titulo} — ${it.resumen}`).join('\n');
-  try {
-    const { texto, tokensIn, tokensOut } = await llamarHaiku(env, listado, contador, SISTEMA_PANORAMA, 260);
-    await registrarLlamada(env, {
-      pasada,
-      modelo: MODELO_HAIKU,
-      proposito: 'panorama_diario',
-      tokensIn,
-      tokensOut,
-      itemLink: null,
-      fuente: null,
-      resultado: 'ok',
-    });
-    return desescapar(texto) || null;
-  } catch (err) {
-    console.error(`[radar] fallo generando panorama: ${err.message}`);
-    return null;
+
+  for (const maxTokens of PANORAMA_MAX_TOKENS) {
+    try {
+      const { texto, tokensIn, tokensOut } = await llamarHaiku(env, listado, contador, SISTEMA_PANORAMA, maxTokens);
+      await registrarLlamada(env, {
+        pasada,
+        modelo: MODELO_HAIKU,
+        proposito: 'panorama_diario',
+        tokensIn,
+        tokensOut,
+        itemLink: null,
+        fuente: null,
+        resultado: 'ok',
+      });
+      const limpio = desescapar(texto).trim();
+      if (limpio && !pareceTruncado(limpio)) return limpio;
+      console.error(`[radar] panorama cortado con maxTokens=${maxTokens}, reintentando con más presupuesto`);
+    } catch (err) {
+      console.error(`[radar] fallo generando panorama (maxTokens=${maxTokens}): ${err.message}`);
+    }
   }
+  // Ni el reintento con más presupuesto lo arregló: mejor sin panorama que
+  // publicar una frase cortada a medias.
+  return null;
 }
 
 const SISTEMA_IMPORTA =
@@ -399,33 +410,48 @@ const SISTEMA_IMPORTA =
   `qué", nunca otro dato que ya esté en el resumen. Esta audiencia tiene especial interés en: ${INTERES_ALTA}.\n\n` +
   'Responde EXCLUSIVAMENTE con esa frase: sin comillas, sin prefijos como "Por qué importa:", sin Markdown.';
 
+// 80 original: insuficiente para "UNA sola frase" larga en español (vistas en
+// producción de 40-60 palabras, ~100-130 tokens) y sin red de seguridad —
+// salía cortado a mitad de palabra. Ahora con reintento a más presupuesto.
+const IMPORTA_MAX_TOKENS = [160, 260];
+
 /**
- * Fase 4, backfill retroactivo (ver DEVLOG.md): genera el campo IMPORTA para
- * una pieza YA publicada, a partir de su título+resumen ya guardados — nunca
- * vuelve a leer el artículo original (puede haber cambiado o desaparecido) ni
- * repite la evaluación de relevancia, que ya se hizo en su día. Best-effort:
- * si falla, `null` y la pieza se queda igual que estaba (sin ese campo).
+ * Genera el campo IMPORTA a partir del título+resumen YA definitivos de una
+ * pieza — nunca vuelve a leer el artículo original ni repite la evaluación de
+ * relevancia, que ya se hizo en `resumir()`/`revisarComoEditor()`. Llamada
+ * aparte (no parte del formato de 4 líneas de `resumir()`): así tiene su
+ * propio presupuesto de tokens, que no compite con el de RESUMEN — la causa
+ * real del corte a mitad de frase visto en producción cuando ambos
+ * compartían una sola respuesta. Se usa tanto en el flujo normal
+ * (`ejecutarDigest`/`regenerarResumenes`, con el resumen recién aprobado por
+ * el editor) como en el backfill retroactivo de piezas antiguas sin este
+ * campo. Best-effort: si falla o sigue cortado tras el reintento, `null` y la
+ * pieza se queda sin ese campo — no es crítico para publicar.
  */
 export async function generarImporta(env, item, opciones = {}) {
   const { contador = null, pasada = 'sin-pasada' } = opciones;
   const contenido = `${item.titulo}\n\n${item.resumen}`;
-  try {
-    const { texto, tokensIn, tokensOut } = await llamarHaiku(env, contenido, contador, SISTEMA_IMPORTA, 80);
-    await registrarLlamada(env, {
-      pasada,
-      modelo: MODELO_HAIKU,
-      proposito: 'importa_backfill',
-      tokensIn,
-      tokensOut,
-      itemLink: item.link,
-      fuente: item.fuente,
-      resultado: 'ok',
-    });
-    return desescapar(texto).trim() || null;
-  } catch (err) {
-    console.error(`[radar] fallo generando IMPORTA retroactivo para "${item.titulo}": ${err.message}`);
-    return null;
+  for (const maxTokens of IMPORTA_MAX_TOKENS) {
+    try {
+      const { texto, tokensIn, tokensOut } = await llamarHaiku(env, contenido, contador, SISTEMA_IMPORTA, maxTokens);
+      await registrarLlamada(env, {
+        pasada,
+        modelo: MODELO_HAIKU,
+        proposito: 'importa',
+        tokensIn,
+        tokensOut,
+        itemLink: item.link,
+        fuente: item.fuente,
+        resultado: 'ok',
+      });
+      const limpio = desescapar(texto).trim();
+      if (limpio && !pareceTruncado(limpio)) return limpio;
+      console.error(`[radar] IMPORTA cortado con maxTokens=${maxTokens} para "${item.titulo}", reintentando`);
+    } catch (err) {
+      console.error(`[radar] fallo generando IMPORTA para "${item.titulo}" (maxTokens=${maxTokens}): ${err.message}`);
+    }
   }
+  return null;
 }
 
 const SISTEMA_CATEGORIA =
@@ -460,6 +486,15 @@ export async function generarCategoria(env, item, opciones = {}) {
     console.error(`[radar] fallo generando categoría retroactiva para "${item.titulo}": ${err.message}`);
     return null;
   }
+}
+
+// Un texto cortado por falta de tokens (no por decisión del modelo) casi
+// nunca termina en puntuación de cierre de frase — señal usada para detectar
+// cortes y, en `generarImporta`/`generarPanorama`, para reintentar con más
+// presupuesto antes de darlo por bueno.
+const TERMINA_FRASE = /[.!?…»"')\]]$/;
+export function pareceTruncado(texto) {
+  return Boolean(texto) && !TERMINA_FRASE.test(texto.trim());
 }
 
 function desescapar(texto) {

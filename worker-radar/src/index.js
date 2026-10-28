@@ -22,7 +22,7 @@
  */
 import { FUENTES, prioridadClase, elegirFuentePrincipal } from './sources.js';
 import { obtenerItems } from './feed.js';
-import { resumir, revisarComoEditor, esReleaseSignificativo, generarPanorama, generarImporta, generarCategoria } from './resumen.js';
+import { resumir, revisarComoEditor, esReleaseSignificativo, generarPanorama, generarImporta, generarCategoria, pareceTruncado } from './resumen.js';
 import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap, renderHilo } from './paginas.js';
 import { ARCHIVO, COLA, DESCARTADOS, MEMORIA, PRESUPUESTO } from './config.js';
@@ -159,7 +159,12 @@ async function cerrarPasada(env, pasada) {
 
   const claveMeta = `radar:panorama-items:${hoy}`;
   const sintetizadas = parseInt((await env.RADAR_KV.get(claveMeta)) || '0', 10);
-  if (sintetizadas === items.length) {
+  const panoramaActual = await env.RADAR_KV.get(`radar:panorama:${hoy}`);
+  // Además del recuento de piezas, comprobar si el panorama guardado quedó
+  // cortado a mitad de frase: sin esto, un panorama truncado una vez se
+  // queda así para siempre en cuanto el recuento deja de cambiar (bug visto
+  // en producción — este camino nunca se autocorregía).
+  if (sintetizadas === items.length && !pareceTruncado(panoramaActual)) {
     console.log(`[radar] cierre ${pasada}: panorama ya al día (${items.length} piezas), no se regenera`);
     return;
   }
@@ -364,15 +369,12 @@ async function backfillFase4(request, env) {
  * re-descargando el artículo y repitiendo el pipeline real de dos jueces;
  * el resto del día no se toca.
  *   curl -X POST "https://radar.espacio-latente.com/regenerar-resumenes?fecha=2026-09-08" -H "X-Radar-Secret: ..."
+ *
+ * También regenera el panorama del día si está cortado o si falta (ver
+ * `pareceTruncado`): antes era un camino de código aparte, sin detección de
+ * truncado ni cubierto por este endpoint — por eso el panorama podía seguir
+ * roto indefinidamente aunque las piezas sí se arreglaran.
  */
-
-// Un texto cortado por falta de tokens (no por decisión del modelo) casi
-// nunca termina en puntuación de cierre de frase — es la misma señal que
-// reportó David a simple vista ("...frente a" sin punto final).
-const TERMINA_FRASE = /[.!?…»"')\]]$/;
-function pareceTruncado(texto) {
-  return Boolean(texto) && !TERMINA_FRASE.test(texto.trim());
-}
 
 async function regenerarResumenes(request, env) {
   if (!autorizado(request, env)) return respuestaNoAutorizado();
@@ -420,7 +422,10 @@ async function regenerarResumenes(request, env) {
     item.resumen = segundoJuez.resumen;
     item.relevancia = primerJuez.relevancia ?? item.relevancia ?? null;
     if (primerJuez.categoria) item.categoria = primerJuez.categoria;
-    if (primerJuez.porQueImporta) item.porQueImporta = primerJuez.porQueImporta;
+    // IMPORTA se genera sobre el resumen YA editado, no el del primer juez —
+    // y en su propia llamada, con su propio presupuesto (ver `generarImporta`).
+    const porQueImporta = await generarImporta(env, item, { contador, pasada });
+    if (porQueImporta) item.porQueImporta = porQueImporta;
     regenerados++;
     cambios = true;
     restantes.push(item);
@@ -433,8 +438,20 @@ async function regenerarResumenes(request, env) {
   const pendientes = restantes.filter(
     (it) => it.resumen === it.titulo || pareceTruncado(it.resumen) || pareceTruncado(it.porQueImporta)
   ).length;
+
+  let panoramaRegenerado = false;
+  const panoramaActual = await env.RADAR_KV.get(`radar:panorama:${fecha}`);
+  if (!panoramaActual || pareceTruncado(panoramaActual)) {
+    const panorama = await generarPanorama(env, restantes, { contador, pasada });
+    if (panorama) {
+      await env.RADAR_KV.put(`radar:panorama:${fecha}`, panorama, { expirationTtl: TTL_DIA });
+      await env.RADAR_KV.put(`radar:panorama-items:${fecha}`, String(restantes.length), { expirationTtl: TTL_DIA });
+      panoramaRegenerado = true;
+    }
+  }
+
   return new Response(
-    JSON.stringify({ fecha, totalItems: restantes.length, regenerados, descartadosAhora, pendientes }, null, 2),
+    JSON.stringify({ fecha, totalItems: restantes.length, regenerados, descartadosAhora, pendientes, panoramaRegenerado }, null, 2),
     { headers: { 'Content-Type': 'application/json' } }
   );
 }
@@ -830,7 +847,7 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
         continue;
       }
 
-      const { contexto, relevancia, categoria, porQueImporta } = primerJuez;
+      const { contexto, relevancia, categoria } = primerJuez;
       const resumen = segundoJuez.resumen;
       const nuevo = {
         titulo: item.titulo,
@@ -841,6 +858,11 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
         relevancia: relevancia ?? null,
       };
       if (categoria) nuevo.categoria = categoria;
+      // IMPORTA en su propia llamada, sobre el RESUMEN ya editado — no sobre
+      // el borrador del primer juez, y sin compartir presupuesto de tokens
+      // con RESUMEN (ver docstring de `generarImporta`, el bug real detrás
+      // del corte a mitad de frase visto en producción).
+      const porQueImporta = await generarImporta(env, nuevo, { contador: contadorSubrequests, pasada });
       if (porQueImporta) nuevo.porQueImporta = porQueImporta;
       if (contexto) {
         nuevo.contexto = { titulo: contexto.titulo, link: contexto.link };

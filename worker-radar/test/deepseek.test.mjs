@@ -18,7 +18,7 @@ function envFalso({ conApiKey = true, contenido } = {}) {
       ok: true,
       async json() {
         return {
-          choices: [{ message: { content: contenido || 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nRESUMEN: Resumen de DeepSeek.\nIMPORTA: Consecuencia de prueba.' } }],
+          choices: [{ message: { content: contenido || 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nRESUMEN: Resumen de DeepSeek.' } }],
           usage: { prompt_tokens: 20, completion_tokens: 8 },
         };
       },
@@ -44,7 +44,9 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   comprobar('DeepSeek: se llama a la API', registro.llamadasDeepseek, 1);
   comprobar('DeepSeek: relevancia parseada', resultado.relevancia, 5);
   comprobar('DeepSeek: resumen parseado', resultado.resumen, 'Resumen de DeepSeek.');
-  comprobar('DeepSeek: IMPORTA parseado', resultado.porQueImporta, 'Consecuencia de prueba.');
+  // IMPORTA ya no se pide en esta llamada (ver `generarImporta`, llamada
+  // aparte): resumir() ya no debe devolver ese campo.
+  comprobar('DeepSeek: resumir() ya no devuelve porQueImporta (va en llamada aparte)', resultado.porQueImporta, undefined);
   // El razonamiento oculto de V4 Flash cuenta contra max_tokens y puede
   // agotar el presupuesto sin emitir respuesta visible (verificado con una
   // llamada real, ver DEVLOG.md) — desactivarlo es lo que lo arregla, así
@@ -54,7 +56,7 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
 
 {
   const { env } = envFalso({
-    contenido: 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nCATEGORIA: Modelos\nRESUMEN: Resumen con categoría.\nIMPORTA: Consecuencia.',
+    contenido: 'RELEVANCIA_TEMA: 5\nVALOR_INFORMATIVO: 5\nCATEGORIA: Modelos\nRESUMEN: Resumen con categoría.',
   });
   const resultado = await resumir(env, ITEM, FUENTE, { proveedor: 'deepseek' });
   comprobar('CATEGORIA: se parsea y normaliza a minúscula', resultado.categoria, 'modelos');
