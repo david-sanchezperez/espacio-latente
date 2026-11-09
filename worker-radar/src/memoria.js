@@ -117,6 +117,48 @@ export async function guardarVectores(env, entradas, contador = null) {
 }
 
 /**
+ * Similitud coseno entre dos vectores del mismo espacio (`bge-m3`). Usada
+ * solo para comparar contra `vectoresPendientes` (ver `index.js`), nunca
+ * contra Vectorize — ahí el `score` ya viene calculado por el índice.
+ */
+function similitudCoseno(a, b) {
+  let punto = 0;
+  let normaA = 0;
+  let normaB = 0;
+  for (let i = 0; i < a.length; i++) {
+    punto += a[i] * b[i];
+    normaA += a[i] * a[i];
+    normaB += b[i] * b[i];
+  }
+  return punto / (Math.sqrt(normaA) * Math.sqrt(normaB));
+}
+
+/**
+ * Compara `vector` contra lo ya aprobado y en cola de publicar EN ESTA MISMA
+ * pasada (`vectoresPendientes` en `index.js`), no contra lo ya indexado en
+ * Vectorize — eso solo recoge pasadas anteriores, nunca lo que se está
+ * generando ahora mismo, porque `guardarVectores` inserta en bloque al
+ * cerrar la pasada (ver DEVLOG.md). Sin esto, dos piezas de la misma noticia
+ * que llegan en el mismo lote (misma fuente con dos entradas, o dos fuentes
+ * del mismo lote cubriendo lo mismo) nunca se ven entre sí y las dos acaban
+ * publicadas por separado — bug real visto en producción el 09/11 (la misma
+ * entrevista de Stanford, dos veces, y la misma noticia de Jensen Huang vía
+ * dos fuentes). Devuelve el mismo formato que `buscarVecinos`, para poder
+ * mezclarse con sus resultados antes de `clasificarVecinos`.
+ */
+export function vecinosLocales(vector, pendientes) {
+  return pendientes
+    .filter((p) => p.vector)
+    .map((p) => ({
+      score: similitudCoseno(vector, p.vector),
+      link: p.link,
+      titulo: p.titulo,
+      fecha: p.fecha,
+      historiaId: p.historiaId || null,
+    }));
+}
+
+/**
  * Clasifica los vecinos de un item nuevo contra los dos umbrales. `hoy` es
  * la fecha ISO (YYYY-MM-DD) de la pasada actual, para descartar como
  * "relacionado" vecinos que en realidad son de hoy mismo (esos ya se

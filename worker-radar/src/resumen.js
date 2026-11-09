@@ -497,13 +497,18 @@ export function pareceTruncado(texto) {
   return Boolean(texto) && !TERMINA_FRASE.test(texto.trim());
 }
 
-function desescapar(texto) {
+export function desescapar(texto) {
   return texto
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
+    .replace(/&amp;/g, '&')
+    // El modelo a veces escribe markdown y escapa caracteres especiales
+    // (\[, \_, \`, \*, \(, \)) aunque esta página renderiza texto plano, no
+    // markdown — sin este paso esos backslashes quedan visibles tal cual
+    // (visto en producción: "\[One Million...\]", "d\_state=64").
+    .replace(/\\([[\]_*`()])/g, '$1');
 }
 
 /**

@@ -6,10 +6,23 @@
  * Ambos ahora reintentan una vez con más presupuesto antes de rendirse, y
  * `pareceTruncado` es la señal compartida para detectarlo.
  */
-import { generarImporta, generarPanorama, pareceTruncado } from '../src/resumen.js';
+import { generarImporta, generarPanorama, pareceTruncado, desescapar } from '../src/resumen.js';
 
 const casos = [];
 const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, obtenido, esperado]);
+
+// --- desescapar: entidades HTML (ya cubierto antes) + escapes de markdown
+// (bug real visto en producción el 09/11: la página renderiza texto plano,
+// nunca markdown, así que "\[", "\_", "\`" quedan visibles tal cual) ---
+comprobar(
+  'desescapar: quita backslash de corchetes escapados',
+  desescapar('\\[One Million AI Engineer Special\\]'),
+  '[One Million AI Engineer Special]'
+);
+comprobar('desescapar: quita backslash de guión bajo escapado', desescapar('d\\_state=64'), 'd_state=64');
+comprobar('desescapar: quita backslash de backtick escapado', desescapar('\\`GGML\\_PREC\\_BF16\\`'), '`GGML_PREC_BF16`');
+comprobar('desescapar: no toca backslashes que no preceden a un carácter especial', desescapar('C:\\ruta\\normal'), 'C:\\ruta\\normal');
+comprobar('desescapar: sigue limpiando entidades HTML como antes', desescapar('&quot;hola&quot; &amp; adiós'), '"hola" & adiós');
 
 // --- pareceTruncado ---
 comprobar(

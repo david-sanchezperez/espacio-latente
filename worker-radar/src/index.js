@@ -27,7 +27,7 @@ import { obtenerTextoArticulo } from './articulo.js';
 import { renderDigest, renderArchivoIndice, renderError, renderFeedAtom, renderRobots, renderSitemap, renderHilo } from './paginas.js';
 import { ARCHIVO, COLA, DESCARTADOS, MEMORIA, PRESUPUESTO } from './config.js';
 import { crearContadorSubrequests, registrarMetaPasada, registrarDedup, resumenDia } from './costes.js';
-import { generarEmbeddings, buscarVecinos, guardarVectores, clasificarVecinos, idDesdeLink } from './memoria.js';
+import { generarEmbeddings, buscarVecinos, guardarVectores, clasificarVecinos, vecinosLocales, idDesdeLink } from './memoria.js';
 
 const TTL_DIA = ARCHIVO.TTL_DIA_SEGUNDOS;
 
@@ -745,7 +745,13 @@ export async function ejecutarDigest(env, fuentes, pasada = `${fechaISO(0)}-sin-
       let vecino = null;
       if (embedding && hayPresupuestoMemoria) {
         const vecinos = await buscarVecinos(env, embedding, MEMORIA.TOP_K, contadorSubrequests);
-        ({ tipo, vecino } = clasificarVecinos(vecinos, hoy));
+        // Vectorize solo conoce pasadas YA cerradas (`guardarVectores` inserta
+        // en bloque al final) — para pillar duplicados dentro de este mismo
+        // lote hay que comparar también contra lo que ya se ha aprobado y
+        // encolado en esta pasada (ver docstring de `vecinosLocales`).
+        const locales = vecinosLocales(embedding, vectoresPendientes);
+        const combinados = [...vecinos, ...locales].sort((a, b) => b.score - a.score);
+        ({ tipo, vecino } = clasificarVecinos(combinados, hoy));
         await registrarDedup(env, {
           pasada,
           itemLink: item.link,

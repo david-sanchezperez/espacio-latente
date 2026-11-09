@@ -103,7 +103,15 @@ function crearEntorno({ feeds = {}, articulos = {}, vecinos = () => [], relevanc
     AI: {
       async run(_modelo, { text }) {
         registro.embeddings++;
-        return { data: text.map(() => [0.1, 0.2]) };
+        // Vector ortogonal por posición DENTRO de esta llamada: los items de
+        // un mismo lote de una misma fuente (varios candidatos en una sola
+        // `generarEmbeddings`) nunca se verán como duplicados entre sí sin
+        // que el test lo pida explícitamente. Dos fuentes DISTINTAS con un
+        // único item cada una comparten posición (ambas "índice 0" en su
+        // propia llamada) y por tanto el mismo vector — justo el caso que
+        // simula el test de "duplicado intra-lote" más abajo (misma noticia
+        // vía dos fuentes, ninguna sabe de la otra todavía en Vectorize).
+        return { data: text.map((_, i) => [i === 0 ? 1 : 0, i === 1 ? 1 : 0, i > 1 ? 1 : 0]) };
       },
     },
     RADAR_VECTORIZE: {
@@ -387,6 +395,28 @@ const comprobar = (descripcion, obtenido, esperado) => casos.push([descripcion, 
   comprobar('Editor adversarial: un veto de Haiku descarta la pieza aunque DeepSeek la aprobara', res.totalNuevos, 0);
   comprobar('Editor adversarial: sí llegó a evaluarse (no es descarte del primer juez)', registro.haiku, 1);
   globalThis.fetch = fetchOriginal;
+}
+
+// --- 13. Duplicado DENTRO del mismo lote (bug real visto en producción el
+// 09/11): dos fuentes distintas cubren la misma noticia y ambas llegan en la
+// misma llamada a `ejecutarDigest` — Vectorize todavía no sabe nada (nadie lo
+// ha insertado), así que solo la comparación local (`vecinosLocales`) puede
+// pillarlo. Antes del fix, las dos se publicaban por separado. ---
+{
+  const { env, almacen, registro } = crearEntorno({
+    feeds: {
+      'https://ejemplo.test/a.xml': [{ titulo: 'Jensen Huang en el centro de una investigación', link: 'https://ejemplo.test/verge' }],
+      'https://ejemplo.test/b.xml': [{ titulo: 'Jensen Huang en el centro de una investigación', link: 'https://ejemplo.test/techcrunch' }],
+    },
+    vecinos: () => [], // Vectorize vacío a propósito: el duplicado solo se ve dentro del lote
+  });
+  const res = await ejecutarDigest(env, [FUENTE_A, FUENTE_B], `${HOY}-test`);
+  const guardados = JSON.parse(almacen.get(`radar:items:${HOY}`));
+
+  comprobar('Duplicado intra-lote: se publica una sola pieza, no dos', res.totalNuevos, 1);
+  comprobar('Duplicado intra-lote: una sola pieza en KV', guardados.length, 1);
+  comprobar('Duplicado intra-lote: la segunda fuente queda fusionada como adicional', (guardados[0].fuentesAdicionales || []).join(','), 'Fuente B');
+  comprobar('Duplicado intra-lote: no se paga DeepSeek dos veces por la misma noticia', registro.deepseek, 1);
 }
 
 let fallos = 0;
