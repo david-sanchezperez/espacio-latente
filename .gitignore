@@ -11,6 +11,7 @@ dist/
 !.env.example
 
 # Wrangler (Cloudflare Workers)
+.wrangler/
 worker/.wrangler/
 worker/node_modules/
 worker-radar/.wrangler/

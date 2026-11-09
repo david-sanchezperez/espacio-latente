@@ -15,6 +15,7 @@ export default function BuzonChat({ strings }) {
   const [resumen, setResumen] = useState(null);
   const [foraTema, setForaTema] = useState(false);
   const [tokenListo, setTokenListo] = useState(false);
+  const [turnstileError, setTurnstileError] = useState(false);
 
   const widgetIdRef = useRef(null);
   const tokenRef = useRef(null);
@@ -42,6 +43,9 @@ export default function BuzonChat({ strings }) {
           tokenRef.current = null;
           setTokenListo(false);
         },
+        'error-callback': () => {
+          setTurnstileError(true);
+        },
       });
     }
 
@@ -53,6 +57,7 @@ export default function BuzonChat({ strings }) {
       script.async = true;
       script.defer = true;
       script.onload = render;
+      script.onerror = () => setTurnstileError(true);
       document.head.appendChild(script);
     }
   }, []);
@@ -143,6 +148,8 @@ export default function BuzonChat({ strings }) {
 
       {bloqueada ? (
         <p style={estilos.aviso}>{t(foraTema ? 'buzon.chat.foraTema' : 'buzon.chat.limite')}</p>
+      ) : turnstileError ? (
+        <p style={estilos.errorTexto}>{t('buzon.chat.turnstileError')}</p>
       ) : (
         <div style={estilos.fila}>
           <input
